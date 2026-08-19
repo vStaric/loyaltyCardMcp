@@ -1,0 +1,7 @@
+dist/
+node_modules/
+package-lock.json
+src/crypto/bip39Wordlist.ts
+
+# Repo and agent-infrastructure markdown is not this package's to reformat.
+*.md
