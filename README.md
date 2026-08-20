@@ -65,10 +65,11 @@ running. This peer is a process that either runs or does not, and polls while it
 
 ### Keeping the two implementations honest
 
-Four formats have to agree byte-for-byte with the app and the backend, and none of them
-fails loudly when they stop agreeing — a drift mints a *different account*, or produces
-envelopes the server answers with `bad_signature`. Each is pinned by known answers
-rather than by round-trip tests, which cannot see this class of break at all:
+Five formats have to agree byte-for-byte with the app and the backend, and none of them
+fails loudly when they stop agreeing — a drift mints a *different account*, produces
+envelopes the server answers with `bad_signature`, or hands the other client a payload
+it cannot open. Each is pinned by known answers rather than by round-trip tests, which
+cannot see this class of break at all:
 
 - **identity derivation** — vectors computed on the JVM, through the same
   `javax.crypto` HMAC-SHA512 the app runs on (`test/identityDeriver.test.ts`)
@@ -78,6 +79,8 @@ rather than by round-trip tests, which cannot see this class of break at all:
   (`test/canonicalMessage.test.ts`)
 - **share code payload** — a code emitted by the app's `ShareCode.encode`,
   transliterated onto the JVM (`test/sharing.test.ts`)
+- **envelope encryption** — a fixed ciphertext, key map and recipient secret that must
+  open to fixed plaintext (`test/envelopeVectors.test.ts`) — see below
 
 The card snapshot encoder writes its fields in the app's declaration order and omits
 defaults the way `kotlinx` does, so the two implementations' bytes can be compared
@@ -85,6 +88,26 @@ rather than merely re-parsed.
 
 The **merge** is pinned the same way, but by a spec rather than by constants — see
 below.
+
+### The seam that carries the data, not just the one that signs it (`lcm-c46`)
+
+"Envelope signed bytes" above is the *signing* seam: it pins what an author signs, and
+the server checks the same thing on every write, so a drift there is caught three ways.
+The **encryption** seam is the one that actually carries user data between clients, and
+the server never decrypts — by design it cannot see a break in it at all.
+
+Round-trip tests cannot either. If this implementation's AEAD framing, key wrapping or
+identity derivation drifts from the app's, both sides still open their own envelopes
+perfectly and every suite in all three repos stays green; the defect surfaces as an
+Android user who cannot open a list this agent sealed.
+
+So the encryption seam is pinned the only way that works across implementations: fixed
+envelopes in [`test-vectors/envelope-crypto.json`](test-vectors/README.md#envelope-cryptojson),
+written down once, with the plaintext each must produce and the recipient secret that
+must produce it. A second implementation that cannot reproduce them has already drifted.
+The file also pins seed → uuid and public keys, and — Ed25519 being deterministic —
+literal signatures, so the whole chain from recovery phrase to published envelope has
+an external answer to compare against.
 
 ### The merge rules are a spec, not folklore (`lcm-bgp`)
 

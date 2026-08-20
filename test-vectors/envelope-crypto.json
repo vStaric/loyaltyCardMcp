@@ -1,0 +1,572 @@
+{
+  "v": 1,
+  "kind": "envelope-crypto",
+  "identities": {
+    "A": {
+      "role": "author — the peer that seals, signs and is a recipient of its own resources",
+      "mnemonic": "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+      "bip39Seed": "5eb00bbddcf069084889a8ab9155568165f5c453ccb85e70811aaed6f6da5fc19a5ac40b389cd370d086206dec8aa6c43daea6690f20ad3d8d48b2d2ce9e38e4",
+      "uuid": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "ed25519Seed": "718221357cf387576e4f3de08314cc3e536ce2d4a6fdf7e3518e363f0bf02e26",
+      "x25519Seed": "61f3ff1f6fc288ce42674e3844042358b6e88a9241b4b679d579c5f7a04b36e1",
+      "ed25519PublicKey": "ad59bff17a8d88aa78e8b547b8430bd8f1065d007c351ba5494841e7850bbdf4",
+      "ed25519SecretKey": "718221357cf387576e4f3de08314cc3e536ce2d4a6fdf7e3518e363f0bf02e26ad59bff17a8d88aa78e8b547b8430bd8f1065d007c351ba5494841e7850bbdf4",
+      "x25519PublicKey": "f3e930991c97eede7490cb06fff322b47d94e110b8650948289fa647c0ee9977",
+      "x25519SecretKey": "d2082555d6e31b276958d01fbf05bedc8eac60d85d9332f6f0aa9a6ae987cc9a"
+    },
+    "B": {
+      "role": "peer — a second recipient the content key is wrapped for",
+      "mnemonic": "legal winner thank year wave sausage worth useful legal winner thank yellow",
+      "bip39Seed": "878386efb78845b3355bd15ea4d39ef97d179cb712b77d5c12b6be415fffeffe5f377ba02bf3f8544ab800b955e51fbff09828f682052a20faa6addbbddfb096",
+      "uuid": "5b12538c-d569-4d1b-8d47-d32f6ea3a915",
+      "ed25519Seed": "241bc925f45ff7f417f88ddb55516e55d2907d201c158410e1eadb0c6b79477b",
+      "x25519Seed": "a2af545899622db26d7ba2bb3a1c2a2e3a572d445cbdcee0362a84eefdc5d687",
+      "ed25519PublicKey": "03408bac394caab4ac4bd6fed3a80c2e10dca2110154a86a1ef4bf1cc3f9ceee",
+      "ed25519SecretKey": "241bc925f45ff7f417f88ddb55516e55d2907d201c158410e1eadb0c6b79477b03408bac394caab4ac4bd6fed3a80c2e10dca2110154a86a1ef4bf1cc3f9ceee",
+      "x25519PublicKey": "1a17d12d737381c66ae7cff6e27eb17c6d6b9419adc1796876858535aa4ecd6c",
+      "x25519SecretKey": "0c440c22b513825b4af6d7c9a768c88e65bdd9cb7aa8c1a8da7ff72cd36ab34d"
+    },
+    "C": {
+      "role": "stranger — holds keys, was never made a recipient of anything",
+      "mnemonic": "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong",
+      "bip39Seed": "b6a6d8921942dd9806607ebc2750416b289adea669198769f2e15ed926c3aa92bf88ece232317b4ea463e84b0fcd3b53577812ee449ccc448eb45e6f544e25b6",
+      "uuid": "36c0cb4c-2503-4842-a8f0-b3ff71b8190d",
+      "ed25519Seed": "2841a200ba067df293b0be7e964b241898ffaaa24be85aca5fd37a9352d4683f",
+      "x25519Seed": "be124d3792239694913e500eedce6f4b70e746ea96a8ce0a9b769c9ddbe0411f",
+      "ed25519PublicKey": "9961817b4aed982278d58c265fd983ee8e9f0073a2acb564765a730b17708519",
+      "ed25519SecretKey": "2841a200ba067df293b0be7e964b241898ffaaa24be85aca5fd37a9352d4683f9961817b4aed982278d58c265fd983ee8e9f0073a2acb564765a730b17708519",
+      "x25519PublicKey": "263eb885abb810a00472a687c4cde90355cf1473ed0b75d1aeba8b7fbc615c2e",
+      "x25519SecretKey": "e9dbf01a7aa14fb8dcd83663baea41e1d08d91210ea008f54cba52710712f2e5"
+    }
+  },
+  "open": [
+    {
+      "name": "a-two-recipient-shopping-list-opens-for-its-author",
+      "why": "The whole seam in one triple: a fixed ciphertext + key map, opened with a fixed recipient secret, must yield exactly these plaintext bytes. Round-trip tests pass on both sides of a drifted AEAD or a drifted sealed box; this one does not.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "plaintextBase64": "eyJzZWN0aW9ucyI6W3siaWQiOiJzZWMtMSIsInRpdGxlIjoiVHJnb3ZpbmEiLCJjcmVhdGVkQXQiOjE3MDAwMDAwMDAwMDAsInNvcnRPcmRlciI6MH1dLCJpdGVtcyI6W3siaWQiOiJpdC0xIiwic2VjdGlvbklkIjoic2VjLTEiLCJuYW1lIjoibWxla28iLCJhZGRlZERhdGUiOjE3MDAwMDAwMDEwMDB9LHsiaWQiOiJpdC0yIiwic2VjdGlvbklkIjoic2VjLTEiLCJuYW1lIjoia3J1aCIsImFkZGVkRGF0ZSI6MTcwMDAwMDAwMjAwMH1dfQ=="
+    },
+    {
+      "name": "the-same-envelope-opens-for-the-second-recipient",
+      "why": "The same bytes, unwrapped from the other entry in the key map. Pins that each sealed box is addressed to its own recipient and that the CEK inside them is the same one — a per-recipient re-encryption bug passes vector one and fails here.",
+      "recipient": "B",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "plaintextBase64": "eyJzZWN0aW9ucyI6W3siaWQiOiJzZWMtMSIsInRpdGxlIjoiVHJnb3ZpbmEiLCJjcmVhdGVkQXQiOjE3MDAwMDAwMDAwMDAsInNvcnRPcmRlciI6MH1dLCJpdGVtcyI6W3siaWQiOiJpdC0xIiwic2VjdGlvbklkIjoic2VjLTEiLCJuYW1lIjoibWxla28iLCJhZGRlZERhdGUiOjE3MDAwMDAwMDEwMDB9LHsiaWQiOiJpdC0yIiwic2VjdGlvbklkIjoic2VjLTEiLCJuYW1lIjoia3J1aCIsImFkZGVkRGF0ZSI6MTcwMDAwMDAwMjAwMH1dfQ=="
+    },
+    {
+      "name": "a-cards-blob-opens-for-its-single-recipient",
+      "why": "A one-entry key map, so the unwrap cannot accidentally be reading a neighbouring entry, and a different resource type so nothing about the plaintext path depends on the signed header.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "5AiYMlYoxncgHIauBCY56BHRwzTFkU+s",
+          "ciphertext": "vb0vJ4Egaxsjv8ri3ceamCLzVlfHUxBIOjmgUNNuAPOnkxspfj3CCg0IMhlwpw8lbl1Fyk3yLIj+sKo6qDx4v08RCSGRWKx+qNMGm2cm",
+          "tag": "8cDS4Sx8oXQK9B/nldU1pg=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "VXmiHYk+qkeLuU7LWedqv9wKgiRAj193RnZ+SELR1VEY6fIs3Nkc0UAaSUy7O/XZ/xXocTFqZem6AUAVLZvPxEFyzwAkN7Ddo9dNkg0WQ4g="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 11,
+          "sig": "vyKJkUCSpUpB7qFdnTMphY6XalOpcOmoLZib6YuCfQiEBWWkGDC0zKteZiAVsGrW4B7ZAMxJo8pkR6kQ2GzNAQ=="
+        }
+      },
+      "plaintextBase64": "eyJjYXJkcyI6W3siaWQiOiJjLTEiLCJuYW1lIjoixaBwYXIiLCJiYXJjb2RlVmFsdWUiOiIxMjMiLCJmb3JtYXQiOiJFQU5fMTMifV19"
+    },
+    {
+      "name": "an-empty-payload-opens-to-zero-bytes",
+      "why": "Ciphertext is empty and the body is tag-only. An implementation that treats an empty ciphertext as absent, or that concatenates ciphertext+tag by scanning for a length, breaks here and nowhere else.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "Inqt6ZKPb/OY5YkuEFkrpJ7Mit0JYKM6",
+          "ciphertext": "",
+          "tag": "HULd3WsWzbQRckM4LWfsow=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "oAHOo/vieCl/bAkYnwAjVv60JpwnfTWmh+bOzap/siFgykZ8RoFC8gpgjdZ210J5sUwN5Dmk8JzVMrRYmLmyr73tiZLuAl30QQ87vPh7zxg="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 1,
+          "sig": "O2gYmzvQuk0Jw4qavyup+Xel5pGwEqP5goMBjBexLFnSlBrwvTwC2GwtIPplelB0UGwRpDFUVlydvwTM5FOwDA=="
+        }
+      },
+      "plaintextBase64": ""
+    },
+    {
+      "name": "every-byte-value-survives-the-payload-path",
+      "why": "Bytes 0x00..0xFF, four ChaCha blocks of them. Catches a side that pushes the payload through a String somewhere: any charset in the path mangles 0x80..0xFF and truncates at the NUL.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "UVfPkIJ4ioftRWJkegv3OwY1unhkAzEk",
+          "ciphertext": "JLZnGn/H/uhIIVNcrHSaJIhBmMB/o55zzrZiBgd2Gl7SwiPA3S7KftUZF1KRHwyO/DuRFA1GU0S96919fzom7Yw7m0TMr4nA+7/VllX2lNZjgsAPUMjjqAQuZdY5zhO/a6Xk3z57ZDJ+d2NVBe0CYYx4HoIpqQ6bXGrPWObbFmDWOsEEafc4oTcUaJoSRd2ZLGLbJtKiM7myAvSsx5kxHyhMGKNsJo8Zg9Sl6/z+2WPCmi6ZwWBg5Bu4O5iKu7KN0q+mjGAnsVcpv40gzJ9a/V4D1ibMJosyzaAPV4kXCX/9DxGk/XAOmGVipKOAWw9wtmIuoR2XX4uVWpMSPOw6FQ==",
+          "tag": "m6QJhmvgQlkESHeDbiYw3A=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "8wVtVM00z0csubwkbmqELbsP2/YdhxLZ9UoPBd6fdQjrKsTq1r1Wg7TZwLUKS8NgABb23kI0uEj9wtQmwcbldwHyWCPlVENj4x0TGMnDk+k="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 2,
+          "sig": "M8PjMk7gDqC1CbIO9DCWojE+dEFq1ppFwlOsLCXWcik5RqFRcqn1Mhw6nQavceh9Lao5VGxA21u4Cc0y3dtwDQ=="
+        }
+      },
+      "plaintextBase64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/w=="
+    },
+    {
+      "name": "non-ascii-item-names-open-unchanged",
+      "why": "Real list text: Slovenian diacritics, a multi-byte punctuation dash and an astral-plane emoji. The payload is UTF-8 bytes and must come back as the same bytes, not re-encoded to the platform charset.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "me8SrtYjh+e1r9sK9+AG0qz8NZR3kRNE",
+          "ciphertext": "g/zWWwgTf0bSnXTC3ezM0xJMbXtieCcoly/AhlGaPg==",
+          "tag": "Cn0Qqrck2gZqf5jqBcmCDA=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "q+TIjb7F4j6P/oyFa+i7R4qQFNDmq7YX8sqAy8+J6AK+gXYr+VQZawizejYwVYpVbGxwJcWZjceWPtKEKn2HzirPQtutpqdl6MIyTZEzC0Y="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 5,
+          "sig": "1wSXZTskjuWbNPzu46UsEsKMCPQbROW3Z1G7k+KbzfSBG4N044BWa/2RZKplQjlEzq6E7c7rTkCT+lPA7FBzDw=="
+        }
+      },
+      "plaintextBase64": "bWxla28gwrcgwr0ga2cg4oCUIMW+ZW1samUg8J+lkA=="
+    }
+  ],
+  "openFails": [
+    {
+      "name": "a-stranger-holds-no-wrapped-key",
+      "why": "Granting the shopping list and not the cards has to mean cannot-read, not is-not-shown (PRD-agent-connection §9). A missing recipient must be reported as exactly that, before any AEAD work happens — a side that falls through to a tag failure here tells its user the list is corrupt when it was simply never shared.",
+      "recipient": "C",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "failure": "no-wrapped-key"
+    },
+    {
+      "name": "a-stranger-cannot-relabel-someone-elses-wrapped-key",
+      "why": "The key map is not an access list the reader can edit: the sealed box is to A's X25519 key, so putting it under C's uuid does not make it open under C's secret.",
+      "recipient": "C",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "36c0cb4c-2503-4842-a8f0-b3ff71b8190d": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "failure": "authentication"
+    },
+    {
+      "name": "a-flipped-tag-byte-does-not-open",
+      "why": "The Poly1305 tag is the only thing standing between a server-side edit and a silently wrong shopping list. A side that decrypts before authenticating passes every other vector here.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSA=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "failure": "authentication"
+    },
+    {
+      "name": "a-flipped-ciphertext-byte-does-not-open",
+      "why": "The same defence from the other side: XChaCha20 is a stream cipher, so a flipped ciphertext byte would otherwise hand back a plaintext that differs in exactly that byte.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBA==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "failure": "authentication"
+    },
+    {
+      "name": "a-wrapped-key-that-is-not-base64-is-rejected",
+      "why": "Base64 decoders disagree about garbage: the JVM's throws, Node's silently skips characters it does not recognise. The category is the assertion — a permissive decoder still fails to open this envelope, but it fails as an authentication error, so the same bad write is a malformed-envelope on one client and a decryption failure on the other.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "not base64 !!!",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "failure": "malformed-base64"
+    },
+    {
+      "name": "a-nonce-that-is-not-base64-is-rejected",
+      "why": "The same permissiveness one field over. A permissive decoder turns this iv into 6 bytes rather than 24 and reports the AEAD tag as the problem, which sends whoever debugs it looking at keys instead of at the field that is actually broken.",
+      "recipient": "A",
+      "envelope": {
+        "data": {
+          "iv": "iv iv iv",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "failure": "malformed-base64"
+    }
+  ],
+  "sign": [
+    {
+      "name": "signing-a-two-recipient-envelope-produces-exactly-this-signature",
+      "why": "Ed25519 detached signatures are deterministic, so the signed-byte layout, the recipient ordering and the key derivation all collapse into one literal. This is the signing seam pinned end to end rather than at the bytes-only boundary.",
+      "signer": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "ver": 4,
+      "data": {
+        "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+        "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+        "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+      },
+      "keys": {
+        "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+        "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+      },
+      "expectedSignatureBase64": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+    },
+    {
+      "name": "the-recipient-map-is-sorted-before-signing-not-taken-in-insertion-order",
+      "why": "The same two recipients handed over in the other order must sign to the identical bytes. A side that iterates its map's own order signs something the server recomputes differently, and the failure surfaces as bad_signature — which reads like a key problem.",
+      "signer": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "ver": 4,
+      "data": {
+        "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+        "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+        "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+      },
+      "keys": {
+        "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q=",
+        "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI="
+      },
+      "expectedSignatureBase64": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+    },
+    {
+      "name": "an-empty-recipient-map-still-signs-the-header",
+      "why": "A resource with no recipients yet is still publishable and still signed. Pins that the trailing recipient block is absent rather than rendered as an empty line.",
+      "signer": "A",
+      "resourceType": "cards",
+      "resourceId": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "ver": 1,
+      "data": {
+        "iv": "Inqt6ZKPb/OY5YkuEFkrpJ7Mit0JYKM6",
+        "ciphertext": "",
+        "tag": "HULd3WsWzbQRckM4LWfsow=="
+      },
+      "keys": {},
+      "expectedSignatureBase64": "lHjDwA+8c9L+oDy+aJKF2EskzTxdoc3Guz59CYBJ3mOQDvALCPyLwrgiIczHNJiDp7Sqeu/py3TIRHxUUtbDAA=="
+    }
+  ],
+  "verify": [
+    {
+      "name": "the-authors-signature-verifies-against-their-published-key",
+      "why": "The baseline the server performs on every write. Without it the negatives below could all pass by verifying nothing.",
+      "author": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "expected": true
+    },
+    {
+      "name": "the-same-bytes-replayed-onto-another-resource-type-do-not-verify",
+      "why": "resourceType is inside the signed bytes precisely so a cards blob cannot be re-posted as a shopping list slice.",
+      "author": "A",
+      "resourceType": "cards",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "the-same-bytes-replayed-onto-another-resource-id-do-not-verify",
+      "why": "resourceId binds a slice to its author's row; without it one peer's signed slice could be replayed into another peer's.",
+      "author": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::5b12538c-d569-4d1b-8d47-d32f6ea3a915",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a-bumped-version-does-not-verify",
+      "why": "ver is the CAS token. If it were not signed, a stale envelope could be replayed at a higher version and win the compare-and-set.",
+      "author": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 5,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a-recipient-added-after-signing-does-not-verify",
+      "why": "The key map is signed, so nobody can graft themselves into a resource's recipients in transit and then be handed the CEK.",
+      "author": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q=",
+          "36c0cb4c-2503-4842-a8f0-b3ff71b8190d": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a-tampered-ciphertext-does-not-verify",
+      "why": "Sign-then-publish covers the encrypted body, which is what lets the server authenticate content it can never read.",
+      "author": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBA==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a-strangers-key-does-not-verify-the-authors-signature",
+      "why": "The obvious one, and the one that would hide a verify that returns true unconditionally.",
+      "author": "C",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "RmReJcsCo71IEAqqzxkWxjUBhIQLn4+rU8C/Pegp+czFychDI6WTu4ofqDw2v3uS0RllOo21jGwqvO6S0X75Dg=="
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "an-unsigned-envelope-is-unverified-rather-than-an-error",
+      "why": "An envelope in flight between encrypt and sign is a normal state; readers must report it false rather than throw, so a malformed peer write cannot crash a sync pass.",
+      "author": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        }
+      },
+      "expected": false
+    },
+    {
+      "name": "a-signature-that-is-not-base64-is-unverified-rather-than-an-error",
+      "why": "Signatures arrive off the wire from anyone. Garbage in the field is a failed verification on both sides, not an exception on one and a false on the other.",
+      "author": "A",
+      "resourceType": "shoppinglist",
+      "resourceId": "list::220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+      "envelope": {
+        "data": {
+          "iv": "jFg3giArM2hXgsDECsjqIkjmeCTce6EO",
+          "ciphertext": "t5JTy5ieR5SavafIo+eNxyRY/toFE5vc/EyS5+HdljeA5JBA1ChjEC/cpP362RUuaNMuLMik5lApj8ViLTK5csICstK8fkCXnuj9UsYvHEqiVngfjNJfszhMfCUrnFFt//A5DIu6b2s1yq+vbiBjLvmyrccOgwFYPtUEwuGFJuegcPJLvHjq75Oum9LIKnmyywS1Gk0UqTneeC3Ey8LzYw9ALKCBqtNY3n7tvZbZ8maAw3o33daI/OlkhwG2KzjMiC42SIf8EjGUqzL1YwDiEYLvpO+Q86WKFky7G9ormMAZRdgTUGrsr4ZN24CywVl3fPvXXICcBg==",
+          "tag": "rvwKXS6fLPzjMvEFq8cfSQ=="
+        },
+        "keys": {
+          "220e05b1-548d-41f9-9d2d-0fe9fe258b88": "+pgWQ3Jk2ZtVmGCkxa1ekv1DkwlYSxdEz9A6EQrbIWiYKJ/u1XCsc5OyPwU2ejvagzxDkt6RF9lDPYPJl8RwFxLDNQxGEjccFE7VXXV1vdI=",
+          "5b12538c-d569-4d1b-8d47-d32f6ea3a915": "fSIFAkxbK0Q29QbSzRVMRNHEdm8CpurRvUm2F8rymz8gJUrnwFhxjcyBjI1xPbw+xpBkaBUjInHDNnP72+ua1UYGC7sLxhT+I9lmeDOUq6Q="
+        },
+        "signature": {
+          "by": "220e05b1-548d-41f9-9d2d-0fe9fe258b88",
+          "ver": 4,
+          "sig": "not base64 !!!"
+        }
+      },
+      "expected": false
+    }
+  ]
+}

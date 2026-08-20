@@ -17,7 +17,8 @@ import { SEED_BYTES } from './bip39.js';
  *
  * **This file is a drift risk.** Any change here mints a different account from the
  * same recovery phrase, so it is pinned by known-answer tests rather than by
- * round-trip tests alone.
+ * round-trip tests alone: JVM-computed vectors in `test/identityDeriver.test.ts`, and
+ * mnemonic → uuid → published public keys in `test-vectors/envelope-crypto.json`.
  */
 
 /** HKDF salt — versioned so the derivation can be rotated without ambiguity. */

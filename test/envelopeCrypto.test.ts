@@ -4,12 +4,20 @@ import { identityFromSeed, type Identity } from '../src/crypto/identity.js';
 import { CryptoError, initSodium, type SodiumCrypto } from '../src/crypto/sodium.js';
 
 /**
- * Exercises the seal / open / sign / verify surface end to end.
+ * Exercises the seal / open / sign / verify surface end to end. What this file guards
+ * is the behaviour that would otherwise fail *quietly* — a recipient left out of the
+ * key map still decrypting, a tampered ciphertext still verifying, a signature that
+ * survives being replayed onto another resource.
  *
- * The layout these produce is pinned separately by `envelopeSigning.test.ts`; what
- * this file guards is the behaviour that would otherwise fail *quietly* — a recipient
- * left out of the key map still decrypting, a tampered ciphertext still verifying, a
- * signature that survives being replayed onto another resource.
+ * **Every envelope here is one this file just sealed**, so nothing below can see a
+ * drift away from the app: a divergent AEAD framing or key wrapping round-trips against
+ * itself perfectly. Cross-implementation pinning is elsewhere, and the two halves are
+ * not the same seam —
+ *
+ * - the signed-byte *layout* against the backend's and the app's own vectors:
+ *   `envelopeSigning.test.ts`;
+ * - the *encryption* seam — fixed ciphertext, key map and recipient secret opening to
+ *   fixed plaintext, plus literal signatures: `envelopeVectors.test.ts` (`lcm-c46`).
  */
 let sodium: SodiumCrypto;
 let crypto: EnvelopeCrypto;

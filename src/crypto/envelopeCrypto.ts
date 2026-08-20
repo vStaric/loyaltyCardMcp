@@ -32,6 +32,13 @@ export interface Recipient {
  * (which only ever verifies) authenticates content without seeing plaintext.
  *
  * All base64 is standard padded, matching the server's `java.util.Base64`.
+ *
+ * The server never decrypts, so no amount of server-side checking can catch this class
+ * drifting from the app's `EnvelopeCrypto.kt` — a break surfaces as a user unable to
+ * open a list the other client sealed. Both directions are therefore pinned against
+ * fixed vectors that neither implementation owns (`test-vectors/envelope-crypto.json`):
+ * envelopes that must open to known plaintext, and bodies that must sign to known
+ * signatures.
  */
 export class EnvelopeCrypto {
   constructor(private readonly sodium: SodiumCrypto) {}
