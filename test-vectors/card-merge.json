@@ -1,0 +1,270 @@
+{
+  "v": 1,
+  "kind": "card-merge",
+  "about": "Vectors for the deduplicating card union (CardMerge.kt / src/merge/cardMerge.ts). See README.md in this directory for the format.",
+  "uuids": {
+    "A": "aaaaaaaa-0000-4000-8000-0000000000aa",
+    "F": "ffffffff-0000-4000-8000-0000000000ff"
+  },
+  "vectors": [
+    {
+      "name": "own-always-wins-and-the-format-is-part-of-the-code",
+      "why": "Two cards are the same code only if they carry the same barcodeValue AND the same barcodeFormat — the same digits under two symbologies are two different cards. Own cards are emitted first and seed the seen-set, so a card we also hold never shows as somebody else's; the sharer's EAN_13 copy is dropped and their CODE_128 card survives.",
+      "own": [
+        {
+          "id": "c-mine",
+          "title": "Cafe",
+          "barcodeValue": "12345",
+          "barcodeFormat": "EAN_13",
+          "createdAt": 1000,
+          "updatedAt": 1000,
+          "sortOrder": 0
+        }
+      ],
+      "shared": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "displayName": "Bo",
+          "cards": [
+            {
+              "id": "c-theirs-ean",
+              "title": "Cafe",
+              "barcodeValue": "12345",
+              "barcodeFormat": "EAN_13",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 0
+            },
+            {
+              "id": "c-theirs-128",
+              "title": "Cafe (128)",
+              "barcodeValue": "12345",
+              "barcodeFormat": "CODE_128",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 1
+            }
+          ]
+        }
+      ],
+      "expected": [
+        { "card": "c-mine", "provenance": "own" },
+        {
+          "card": "c-theirs-128",
+          "provenance": {
+            "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+            "displayName": "Bo",
+            "connectionKind": "person"
+          }
+        }
+      ]
+    },
+    {
+      "name": "the-value-and-the-format-cannot-be-confused-for-one-another",
+      "why": "The two halves of the code identity must not run together. A card whose value is literally \"12 EAN_8\" and no readable format is a DIFFERENT card from the EAN_8 card \"12\"; an implementation that builds its dedup key by concatenating the two drops one of two genuinely different cards.",
+      "own": [
+        {
+          "id": "c-short",
+          "title": "Short",
+          "barcodeValue": "12",
+          "barcodeFormat": "EAN_8",
+          "createdAt": 1000,
+          "updatedAt": 1000,
+          "sortOrder": 0
+        }
+      ],
+      "shared": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "cards": [
+            {
+              "id": "c-mashed",
+              "title": "Mashed",
+              "barcodeValue": "12 EAN_8",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 0
+            }
+          ]
+        }
+      ],
+      "expected": [
+        { "card": "c-short", "provenance": "own" },
+        {
+          "card": "c-mashed",
+          "provenance": { "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa" }
+        }
+      ]
+    },
+    {
+      "name": "photo-only-cards-never-deduplicate",
+      "why": "A card with no barcodeValue carries no code and so can never be a duplicate of anything, including another codeless card. Every one is kept, and its photo pointers travel through the merge verbatim.",
+      "own": [
+        {
+          "id": "c-mine-photo",
+          "title": "Mine",
+          "createdAt": 1000,
+          "updatedAt": 1000,
+          "sortOrder": 0,
+          "frontBlob": {
+            "hash": "5f0d1e2c3b4a59687766554433221100ffeeddccbbaa99887766554433221100",
+            "key": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8="
+          }
+        }
+      ],
+      "shared": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "displayName": "Bo",
+          "cards": [
+            {
+              "id": "c-theirs-photo-1",
+              "title": "One",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 0
+            },
+            {
+              "id": "c-theirs-photo-2",
+              "title": "Two",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 1
+            }
+          ]
+        }
+      ],
+      "expected": [
+        { "card": "c-mine-photo", "provenance": "own" },
+        {
+          "card": "c-theirs-photo-1",
+          "provenance": {
+            "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+            "displayName": "Bo"
+          }
+        },
+        {
+          "card": "c-theirs-photo-2",
+          "provenance": {
+            "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+            "displayName": "Bo"
+          }
+        }
+      ]
+    },
+    {
+      "name": "among-sharers-the-lowest-uuid-wins-whatever-order-they-arrived-in",
+      "why": "The sharers are handed over in F-then-A order and must be merged in A-then-F order: the tiebreak is the authorUuid, not the fetch order, or the grid would depend on which peer's envelope opened first. Each sharer's own cards keep their own order within the sharer's block.",
+      "own": [],
+      "shared": [
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "displayName": "Ada",
+          "connectionKind": "agent",
+          "cards": [
+            {
+              "id": "c-f-dup",
+              "title": "Gym (Ada)",
+              "barcodeValue": "999",
+              "barcodeFormat": "EAN_13",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 0
+            },
+            {
+              "id": "c-f-only",
+              "title": "Pool",
+              "barcodeValue": "222",
+              "barcodeFormat": "EAN_13",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 1
+            }
+          ]
+        },
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "displayName": "Bo",
+          "cards": [
+            {
+              "id": "c-a-dup",
+              "title": "Gym (Bo)",
+              "barcodeValue": "999",
+              "barcodeFormat": "EAN_13",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 0
+            },
+            {
+              "id": "c-a-only",
+              "title": "Library",
+              "barcodeValue": "111",
+              "barcodeFormat": "EAN_13",
+              "createdAt": 1000,
+              "updatedAt": 1000,
+              "sortOrder": 1
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "card": "c-a-dup",
+          "provenance": {
+            "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+            "displayName": "Bo"
+          }
+        },
+        {
+          "card": "c-a-only",
+          "provenance": {
+            "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+            "displayName": "Bo"
+          }
+        },
+        {
+          "card": "c-f-only",
+          "provenance": {
+            "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+            "displayName": "Ada",
+            "connectionKind": "agent"
+          }
+        }
+      ]
+    },
+    {
+      "name": "an-agents-card-is-badged-as-an-agents",
+      "why": "The roster label rides onto every card the sharer contributed, so the grid can say a MACHINE put this card here rather than merely that someone did — PRD-agent-connection §7.4. A badge that reads only \"Ada\" for an agent is the failure this carries the label to prevent.",
+      "own": [],
+      "shared": [
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "displayName": "Ada",
+          "connectionKind": "agent",
+          "cards": [
+            {
+              "id": "c-agent",
+              "title": "Roastery",
+              "notes": "added by the agent",
+              "barcodeValue": "777",
+              "barcodeFormat": "QR_CODE",
+              "createdAt": 1000,
+              "updatedAt": 2000,
+              "sortOrder": 0
+            }
+          ]
+        }
+      ],
+      "expected": [
+        {
+          "card": "c-agent",
+          "provenance": {
+            "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+            "displayName": "Ada",
+            "connectionKind": "agent"
+          }
+        }
+      ]
+    }
+  ]
+}

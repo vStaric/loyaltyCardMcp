@@ -10,6 +10,11 @@ import type { ShoppingListSnapshot } from './snapshot.js';
  * so the list is reconstructed by merging the slices every author published. This peer
  * is one more author in exactly that merge; nothing here is agent-specific.
  *
+ * Every rule below is also stated language-neutrally in `test-vectors/shopping-merge.json`,
+ * which the app runs too (`lcm-bgp`). Change a rule there in the same commit you change
+ * it here — a rule the two implementations state differently is a shared list two devices
+ * disagree about, and none of the four bugs cited below announced itself any louder.
+ *
  * ## Items — OR-Set membership
  * Every add is a fresh row with a unique id and re-adding a name mints a new id, so an
  * id is added exactly once and removal is a **tombstone** (`clearedDate`), never an

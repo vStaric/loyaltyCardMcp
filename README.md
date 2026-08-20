@@ -79,10 +79,40 @@ rather than by round-trip tests, which cannot see this class of break at all:
 - **share code payload** — a code emitted by the app's `ShareCode.encode`,
   transliterated onto the JVM (`test/sharing.test.ts`)
 
-`CardMerge` landed with the card tools (`lcm-ffs`) and `ShoppingMerge` lands with the
-list ones; `lcm-bgp` is where their shared vectors go. The card snapshot encoder writes
-its fields in the app's declaration order and omits defaults the way `kotlinx` does, so
-the two implementations' bytes can be compared rather than merely re-parsed.
+The card snapshot encoder writes its fields in the app's declaration order and omits
+defaults the way `kotlinx` does, so the two implementations' bytes can be compared
+rather than merely re-parsed.
+
+The **merge** is pinned the same way, but by a spec rather than by constants — see
+below.
+
+### The merge rules are a spec, not folklore (`lcm-bgp`)
+
+`ShoppingMerge` and `CardMerge` are the two ports with no byte-level answer to compare
+against: they are behaviour, and behaviour drifts quietly. So the rules live in
+[`test-vectors/`](test-vectors/README.md) as language-neutral JSON — input slices plus
+a `localUuid`, and the exact merged output — and **both** implementations run them.
+
+Sixteen vectors, one per rule, including one for each merge bug the app already shipped
+and fixed:
+
+| | |
+|---|---|
+| `lc-99a` | an uncheck must not move the content stamp backwards |
+| `lc-39d` | a rename wins from either side of the uuid tiebreak |
+| `lc-c3j` | a move carries `sortOrder` and `indentLevel` and nothing else |
+| `lc-l85` | a section rename wins without dragging the renamer's slot |
+| `lc-17q` | a section removal is unioned, dated from its first report, and waits for the section to empty |
+
+Rows are written in the wire shape, so each side decodes them with the snapshot codec
+it already ships and "absent means default" is exercised on the way in. This side's
+harness is `test/mergeVectors.test.ts`; it decodes, merges, compares, and asserts
+nothing of its own — anything it asserted alone would be a rule the app is not held to,
+which is the drift the vectors exist to prevent.
+
+Every vector was checked by mutating the implementation and watching it fail. Two did
+not bite on the first attempt, which is why the one-slot vectors hand their slices over
+with the later-sorting id first.
 
 ### Where the agent's keys live, and what protects them
 

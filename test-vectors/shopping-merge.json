@@ -1,0 +1,906 @@
+{
+  "v": 1,
+  "kind": "shopping-merge",
+  "about": "Vectors for the shared shopping list's merge (ShoppingMerge.kt / src/shopping/merge.ts). See README.md in this directory for the format.",
+  "uuids": {
+    "A": "aaaaaaaa-0000-4000-8000-0000000000aa",
+    "F": "ffffffff-0000-4000-8000-0000000000ff"
+  },
+  "vectors": [
+    {
+      "name": "uncheck-does-not-move-the-stamp-backwards",
+      "bug": "lc-99a",
+      "why": "Unchecking nulls checkedOffDate, so without stateChangedAt the observation's stamp falls back to addedDate and moves BACKWARDS: the peer's older check keeps winning and the uncheck snaps back. A is also the LOWER uuid here, so an implementation that lets the two tie loses the tiebreak too.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "stateChangedAt": 3000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "checkedOffDate": 2000,
+                "stateChangedAt": 2000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-dairy",
+            "title": "Dairy",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "stateChangedAt": 3000,
+                "sortOrder": 0,
+                "provenance": "own"
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-milk"]
+      }
+    },
+    {
+      "name": "a-rename-wins-from-the-lower-uuid",
+      "bug": "lc-39d",
+      "why": "A text edit moves no date of its own, so without stateChangedAt the renamed row and the peer's untouched observation are identically stamped and the tie breaks on the greater uuid. Here the renamer holds the LOWER uuid, which is the half of the bug that actually reverted what the user typed.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-bakery",
+                "title": "Bakery",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-bread",
+                "sectionId": "s-bakery",
+                "name": "Sourdough",
+                "addedDate": 1000,
+                "stateChangedAt": 4000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-bakery",
+                "title": "Bakery",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-bread",
+                "sectionId": "s-bakery",
+                "name": "Bread",
+                "addedDate": 1000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-bakery",
+            "title": "Bakery",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-bread",
+                "sectionId": "s-bakery",
+                "name": "Sourdough",
+                "addedDate": 1000,
+                "stateChangedAt": 4000,
+                "sortOrder": 0,
+                "provenance": "own"
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-bread"]
+      }
+    },
+    {
+      "name": "a-rename-wins-from-the-higher-uuid",
+      "bug": "lc-39d",
+      "why": "The same rename from the other side of the tiebreak: the renamer holds the HIGHER uuid and the untouched observation is ours. An implementation that resolved this on the uuid rather than the stamp would pass the lower-uuid vector and fail this one, or the reverse. The rename is also an agent's, so the badge must name the agent — PRD-agent-connection §7.4.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-bakery",
+                "title": "Bakery",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-bread",
+                "sectionId": "s-bakery",
+                "name": "Bread",
+                "addedDate": 1000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "displayName": "Ada",
+          "connectionKind": "agent",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-bakery",
+                "title": "Bakery",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-bread",
+                "sectionId": "s-bakery",
+                "name": "Sourdough",
+                "addedDate": 1000,
+                "stateChangedAt": 4000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-bakery",
+            "title": "Bakery",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-bread",
+                "sectionId": "s-bakery",
+                "name": "Sourdough",
+                "addedDate": 1000,
+                "stateChangedAt": 4000,
+                "sortOrder": 0,
+                "provenance": {
+                  "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+                  "displayName": "Ada",
+                  "connectionKind": "agent"
+                }
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-bread"]
+      }
+    },
+    {
+      "name": "a-move-arrives-without-the-movers-stale-check-state",
+      "bug": "lc-c3j",
+      "why": "Placement is resolved against layoutChangedAt and ONLY sortOrder and indentLevel are taken from the winner of it. Fold the move into the content stamp and the mover's stale unchecked observation wins the whole row; leave the move unstamped and the moved row ties with the untouched observation, loses on the uuid, and springs back. Both fields travel together, and provenance stays the content author's — a drag does not change whose item it is.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-eggs",
+                "sectionId": "s-dairy",
+                "name": "Eggs",
+                "addedDate": 1000,
+                "checkedOffDate": 5000,
+                "stateChangedAt": 5000,
+                "sortOrder": 0
+              },
+              {
+                "id": "i-butter",
+                "sectionId": "s-dairy",
+                "name": "Butter",
+                "addedDate": 1000,
+                "sortOrder": 1
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-eggs",
+                "sectionId": "s-dairy",
+                "name": "Eggs",
+                "addedDate": 1000,
+                "layoutChangedAt": 6000,
+                "sortOrder": 3,
+                "indentLevel": 1
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-dairy",
+            "title": "Dairy",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-butter",
+                "sectionId": "s-dairy",
+                "name": "Butter",
+                "addedDate": 1000,
+                "sortOrder": 1,
+                "provenance": "own"
+              },
+              {
+                "id": "i-eggs",
+                "sectionId": "s-dairy",
+                "name": "Eggs",
+                "addedDate": 1000,
+                "checkedOffDate": 5000,
+                "stateChangedAt": 5000,
+                "sortOrder": 3,
+                "indentLevel": 1,
+                "provenance": "own"
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-eggs"]
+      }
+    },
+    {
+      "name": "a-section-rename-wins-without-carrying-the-renamers-slot",
+      "bug": "lc-l85",
+      "why": "The title is resolved against titleChangedAt and nothing else. The renamer holds the LOWER uuid, so a rename folded into the section representative's createdAt would lose the tie outright; and the section representative here is the OTHER author's, so a title that carried its author's whole row would move the section from slot 5 to slot 0. titleChangedAt travels with the title it won, because adopting a section republishes it verbatim.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Chilled",
+                "createdAt": 1000,
+                "titleChangedAt": 7000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 5
+              }
+            ],
+            "items": []
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-dairy",
+            "title": "Chilled",
+            "createdAt": 1000,
+            "titleChangedAt": 7000,
+            "sortOrder": 5,
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "sortOrder": 0,
+                "provenance": "own"
+              }
+            ]
+          }
+        ],
+        "observedByPeers": []
+      }
+    },
+    {
+      "name": "a-tombstone-beats-a-live-observation",
+      "bug": null,
+      "why": "Removal is a tombstone, never a row delete, and the tombstone wins on the stamp like any other content mutation. The tombstoning author holds the LOWER uuid so the result cannot be an accident of the tiebreak. The tombstoned row STAYS in the merged section — it is the representative, carrying clearedDate — and is filtered out by the caller's active-items view, not by the merge.",
+      "localUuid": "ffffffff-0000-4000-8000-0000000000ff",
+      "slices": [
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-yoghurt",
+                "sectionId": "s-dairy",
+                "name": "Yoghurt",
+                "addedDate": 1000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "displayName": "Ada",
+          "connectionKind": "agent",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-yoghurt",
+                "sectionId": "s-dairy",
+                "name": "Yoghurt",
+                "addedDate": 1000,
+                "clearedDate": 8000,
+                "stateChangedAt": 8000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-dairy",
+            "title": "Dairy",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-yoghurt",
+                "sectionId": "s-dairy",
+                "name": "Yoghurt",
+                "addedDate": 1000,
+                "clearedDate": 8000,
+                "stateChangedAt": 8000,
+                "sortOrder": 0,
+                "provenance": {
+                  "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+                  "displayName": "Ada",
+                  "connectionKind": "agent"
+                }
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-yoghurt"]
+      }
+    },
+    {
+      "name": "one-slot-two-authors-seen-from-the-lower-uuid",
+      "bug": null,
+      "why": "Each author numbers their own rows densely from zero, so two authors who move a row at once land different ids on the same sortOrder. The id settles it. Paired with the next vector, which merges the SAME slices from the other device: the two must produce the same order, or the shared list is not shared. The slices are handed over with the LATER-sorting id first, so slice iteration order and the expected order disagree: an implementation that leaves the loser of a slot collision wherever iteration happened to put it fails here.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "displayName": "Ada",
+          "connectionKind": "agent",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-zucchini",
+                "sectionId": "s-list",
+                "name": "Zucchini",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-apple",
+                "sectionId": "s-list",
+                "name": "Apple",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-list",
+            "title": "List",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-apple",
+                "sectionId": "s-list",
+                "name": "Apple",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": "own"
+              },
+              {
+                "id": "i-zucchini",
+                "sectionId": "s-list",
+                "name": "Zucchini",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": {
+                  "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+                  "displayName": "Ada",
+                  "connectionKind": "agent"
+                }
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-zucchini"]
+      }
+    },
+    {
+      "name": "one-slot-two-authors-seen-from-the-higher-uuid",
+      "bug": null,
+      "why": "The previous vector's slices merged from the other device. Only the provenance and observedByPeers change seats; the ORDER must be byte-for-byte the same. An implementation that left the loser of a slot collision wherever slice iteration happened to put it passes one of these two and fails the other. The slices are handed over with the LATER-sorting id first, so slice iteration order and the expected order disagree: an implementation that leaves the loser of a slot collision wherever iteration happened to put it fails here.",
+      "localUuid": "ffffffff-0000-4000-8000-0000000000ff",
+      "slices": [
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-zucchini",
+                "sectionId": "s-list",
+                "name": "Zucchini",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "displayName": "Bo",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-apple",
+                "sectionId": "s-list",
+                "name": "Apple",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-list",
+            "title": "List",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-apple",
+                "sectionId": "s-list",
+                "name": "Apple",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": {
+                  "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+                  "displayName": "Bo",
+                  "connectionKind": "person"
+                }
+              },
+              {
+                "id": "i-zucchini",
+                "sectionId": "s-list",
+                "name": "Zucchini",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": "own"
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-apple"]
+      }
+    },
+    {
+      "name": "an-item-whose-section-nobody-holds-is-dropped",
+      "bug": null,
+      "why": "An item can only exist under a section row some author actually holds; one whose sectionId is in no slice has no home and is dropped. It is still counted in observedByPeers, though — that set answers 'does anyone else hold this id', which is a question about the row, not about where it would sit.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [],
+            "items": [
+              {
+                "id": "i-ghost",
+                "sectionId": "s-vanished",
+                "name": "Ghost",
+                "addedDate": 1000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-dairy",
+            "title": "Dairy",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "sortOrder": 0,
+                "provenance": "own"
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-ghost"]
+      }
+    },
+    {
+      "name": "a-section-removal-is-unioned-and-dated-from-its-first-report",
+      "bug": "lc-17q",
+      "why": "A removal is a fact any author can state and none can retract, so deletedAt is unioned rather than raced and the instant kept is the EARLIEST reported — a later author republishing the tombstone is repeating that removal, not performing a new one. The section leaves the result only once nothing live is left in it on any slice: s-old is tombstoned but still holds someone's live item and stays; s-gone is tombstoned and empty and is dropped, its tombstoned item with it.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-old",
+                "title": "Old",
+                "createdAt": 1000,
+                "deletedAt": 3000,
+                "sortOrder": 0
+              },
+              {
+                "id": "s-gone",
+                "title": "Gone",
+                "createdAt": 1000,
+                "deletedAt": 3000,
+                "sortOrder": 1
+              }
+            ],
+            "items": [
+              {
+                "id": "i-crumb",
+                "sectionId": "s-gone",
+                "name": "Crumb",
+                "addedDate": 1000,
+                "clearedDate": 2000,
+                "stateChangedAt": 2000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "displayName": "Ada",
+          "connectionKind": "agent",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-old",
+                "title": "Old",
+                "createdAt": 1000,
+                "deletedAt": 5000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-cheese",
+                "sectionId": "s-old",
+                "name": "Cheese",
+                "addedDate": 1000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-old",
+            "title": "Old",
+            "createdAt": 1000,
+            "deletedAt": 3000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-cheese",
+                "sectionId": "s-old",
+                "name": "Cheese",
+                "addedDate": 1000,
+                "sortOrder": 0,
+                "provenance": {
+                  "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+                  "displayName": "Ada",
+                  "connectionKind": "agent"
+                }
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-cheese"]
+      }
+    },
+    {
+      "name": "a-slice-with-no-state-stamp-still-compares-on-its-other-dates",
+      "bug": null,
+      "why": "checkedOffDate and clearedDate stay in the content stamp's maximum so a slice written on a build that predates stateChangedAt — every field of it absent on the wire — still compares the way it always did. This is the compatibility half of lc-99a: dropping the older dates from the comparator would strand every peer mid-rollout.",
+      "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-dairy",
+                "title": "Dairy",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "checkedOffDate": 4000,
+                "sortOrder": 0
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-dairy",
+            "title": "Dairy",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-milk",
+                "sectionId": "s-dairy",
+                "name": "Milk",
+                "addedDate": 1000,
+                "checkedOffDate": 4000,
+                "sortOrder": 0,
+                "provenance": {
+                  "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+                  "displayName": null,
+                  "connectionKind": "person"
+                }
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-milk"]
+      }
+    }
+  ]
+}

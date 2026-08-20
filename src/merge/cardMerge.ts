@@ -41,6 +41,10 @@ export interface SharedCards {
  * single blob owned and signed by one author, which is the whole reason an agent can
  * add a card but never edit the user's (PRD-agent-connection §4.2, §6).
  *
+ * The dedup and precedence rules below are also stated language-neutrally in
+ * `test-vectors/card-merge.json`, which the app runs too (`lcm-bgp`); change them in
+ * both places in one commit.
+ *
  * ## Dedup rule (format-aware)
  * Two cards are the same code iff they carry the **same `barcodeValue` AND the same
  * `barcodeFormat`** — the same digits under different symbologies are different cards.
