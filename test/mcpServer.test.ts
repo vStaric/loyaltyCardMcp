@@ -50,7 +50,10 @@ describe('the MCP server', () => {
     expect(client.getServerVersion()?.name).toBe(SERVER_NAME);
     expect(client.getInstructions()).toBe(SERVER_INSTRUCTIONS);
     expect(SERVER_INSTRUCTIONS).toContain('CANNOT edit or delete a card the user created');
-    expect(SERVER_INSTRUCTIONS).toContain('That is a\nrefusal, not an empty list');
+    // The two resources differ, and the difference is the thing a model must not have to
+    // discover by being refused: cards are single-author, the shopping list is not.
+    expect(SERVER_INSTRUCTIONS).toContain('editing, checking off, moving or removing the user');
+    expect(SERVER_INSTRUCTIONS).toContain('That is\na refusal, not an empty result');
   });
 
   it('lists its tools with their schemas and hints', async () => {

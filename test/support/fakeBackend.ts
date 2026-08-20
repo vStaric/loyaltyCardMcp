@@ -6,6 +6,7 @@ import { StaleVersionError } from '../../src/sync/apiError.js';
 import { encodeCardsSnapshot } from '../../src/sync/cardSnapshot.js';
 import type { TolarApi } from '../../src/sync/tolarApi.js';
 import type {
+  SliceViewDto,
   PairingCodeIssuedDto,
   PairingCodeResolvedDto,
   ShareRequestsViewDto,
@@ -16,6 +17,10 @@ import type {
   UserPutBody,
 } from '../../src/sync/wire.js';
 import type { Card } from '../../src/cards/card.js';
+import {
+  encodeShoppingSnapshotBytes,
+  type ShoppingListSnapshot,
+} from '../../src/shopping/snapshot.js';
 
 /**
  * An in-memory Tolar backend with the two rules that make the card tests mean
@@ -35,6 +40,12 @@ export class FakeBackend implements TolarApi {
   cardPuts = 0;
   /** Accounts whose card reads fail, to exercise the unreachable path. */
   readonly unreachableCards = new Set<string>();
+  /** Shopping-list slices, keyed by list id — each author publishes into their own. */
+  readonly slices = new Map<string, SliceViewDto[]>();
+  /** Counts every slice PUT, so a test can prove a write happened exactly once. */
+  slicePuts = 0;
+  /** Lists whose reads fail, to exercise the unreachable path. */
+  readonly unreachableLists = new Set<string>();
 
   async getUser(uuid: string): Promise<UserProfileDto | null> {
     return this.users.get(uuid) ?? null;
@@ -72,14 +83,31 @@ export class FakeBackend implements TolarApi {
     return { originUuid: '', requests: this.requests };
   }
 
-  // --- not exercised by the card surface ---------------------------------------
+  async getShoppingList(listId: string): Promise<ShoppingListViewDto> {
+    if (this.unreachableLists.has(listId)) throw new Error('backend unavailable');
+    return { listId, slices: this.slices.get(listId) ?? [] };
+  }
+
+  /**
+   * Store one author's slice under `listId`, enforcing the same strictly-increasing
+   * version the cards blob gets. A slice is per (list, author), so a second author
+   * writing into the same list joins it rather than replacing what is there.
+   */
+  async putShoppingSlice(listId: string, authorUuid: string, envelope: Envelope): Promise<number> {
+    this.slicePuts++;
+    const ver = envelope.signature?.ver ?? 0;
+    const existing = this.slices.get(listId) ?? [];
+    const current = existing.find((s) => s.authorUuid === authorUuid)?.ver ?? 0;
+    if (ver <= current) throw new StaleVersionError();
+    this.slices.set(listId, [
+      ...existing.filter((s) => s.authorUuid !== authorUuid),
+      { authorUuid, ver, envelope },
+    ]);
+    return ver;
+  }
+
+  // --- not exercised by either tool surface ------------------------------------
   async deleteUser(): Promise<void> {}
-  async getShoppingList(): Promise<ShoppingListViewDto> {
-    return { listId: '', slices: [] };
-  }
-  async putShoppingSlice(): Promise<number> {
-    return 1;
-  }
   async putBlob(): Promise<void> {}
   async getBlob(): Promise<Uint8Array | null> {
     return null;
@@ -137,6 +165,28 @@ export function publishCardsAs(
     author.signingKeyPair.secretKey,
   );
   backend.cards.set(author.uuid, { envelope, ver });
+  return envelope;
+}
+
+/** Publish `slice` as `author`'s shopping-list slice, sealed to `recipients`. */
+export function publishSliceAs(
+  backend: FakeBackend,
+  crypto: EnvelopeCrypto,
+  author: Identity,
+  slice: ShoppingListSnapshot,
+  recipients: readonly Identity[],
+  ver = 1,
+): Envelope {
+  const envelope = crypto.seal(
+    'shoppinglist',
+    `${author.uuid}::${author.uuid}`,
+    ver,
+    encodeShoppingSnapshotBytes(slice),
+    recipients.map((r) => ({ uuid: r.uuid, x25519PublicKey: r.encPublicKey })),
+    author.uuid,
+    author.signingKeyPair.secretKey,
+  );
+  backend.slices.set(author.uuid, [{ authorUuid: author.uuid, ver, envelope }]);
   return envelope;
 }
 

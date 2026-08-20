@@ -151,6 +151,66 @@ Photos travel as content-addressed blobs. This peer carries their pointers throu
 re-publish untouched (losing them would erase the author's photos) and reports that a
 photo *exists*; reading the bytes needs the app's `ImageCipher` format and is `lcm-gll`.
 
+## The shopping-list tools (`lcm-a5e`)
+
+`serve` also exposes `list_shopping` and the eight writes: `add_items`, `rename_item`,
+`set_checked`, `set_footnote`, `move_item`, `create_section`, `rename_section`,
+`remove_item`.
+
+This is the resource where "the same as a person" means *everything*. The list is already
+multi-writer: each author publishes their own slice at
+`shoppinglist/{listId}::{authorUuid}` and every device reconstructs the list by merging
+them, so the agent editing the user's item is one more author publishing one more
+observation — not a privilege, and not the cards' asymmetry. What it still cannot do is
+write another account's resource; the server verifies the signature inside the envelope.
+
+There is deliberately **no `remove_section`**. A section's tombstone only takes effect once
+the section is empty on *every* slice, and a peer's live items are not this agent's to
+destroy, so the honest removal from here is to tombstone the items.
+
+### The stamp column is the whole risk
+
+Every rule below is a bug the Android app already shipped and fixed, and not one of them
+fails loudly: the write succeeds, the tool reports success, and the phone silently reverts
+it on the next merge. `src/shopping/writer.ts` is where they live, and
+`test/shoppingWriter.test.ts` checks each one twice — on the field, and *through the merge*
+against a peer's stale observation, which is the shape all four bugs actually took. A field
+assertion alone would have caught none of them: the field was always written; the stamp
+that let it win was not.
+
+| write | stamp it moves | the bug without it |
+|---|---|---|
+| add | `addedDate` | — |
+| rename, footnote | `stateChangedAt` | `lc-39d` — ties with a stale observation, loses on the uuid tiebreak, the typing reverts |
+| check | `checkedOffDate` + `stateChangedAt` | — |
+| uncheck | `stateChangedAt` | `lc-99a` — the stamp moves *backwards* and the uncheck snaps back |
+| move, indent | `layoutChangedAt`, never the content stamp | `lc-c3j` — one move drags a whole section's stale check-states with it |
+| rename section | `titleChangedAt`, never the section representative | `lc-l85` — the rename carries the renamer's `sortOrder` |
+| remove | `clearedDate` + `stateChangedAt`, never a row delete | the peers' live observations are left unopposed and the item returns |
+
+Two further rules, both from the app: **adopt the section when writing into it**
+(`lc-ing`), and **observe a peer's item under the peer's own id** (`lc-99a`) — an
+observation is a second opinion about an existing element, so it must collide with their
+row in the merge's union-by-id rather than fork a second row beside it.
+
+`ShoppingMerge` is ported alongside them (`src/shopping/merge.ts`), checked against the
+cases the app's own `ShoppingMergeTest` pins; `lcm-bgp` is where the two implementations'
+shared vectors go.
+
+### One divergence, deliberate
+
+The app renumbers a dragged section densely over **its own** rows
+(`TodoReorder.resortedItems`). This agent typically holds one row in a section full of
+somebody else's, where a dense number lands on an occupied slot and the merge's id
+tiebreak decides which side of it the row falls on. So `move_item` writes one row and
+picks its slot relative to the merged neighbours it must land between — slots are integers
+and need not start at zero or be contiguous.
+
+Adopting the peer's rows in order to renumber them is the thing not to do: a verbatim copy
+of a peer's row carries an *identical* content stamp, so the tiebreak falls to the greater
+uuid — and where that is ours, reordering a section would re-attribute the user's own items
+to the agent.
+
 ### Who this agent shares with is not a tool
 
 Pairing, accepting and revoking are CLI commands, deliberately. `POST /api/requestShare`
@@ -171,7 +231,7 @@ in the Android repo at `docs/PRD-agent-connection.md` (§4, §6, §7).
 
 - `lcm-au3` — peer core: identity, envelope crypto, REST client (from lc-f9o) ✅
 - `lcm-ffs` — card read + agent-owned card write tools (from lc-6du) ✅
-- `lcm-a5e` — shopping-list write tools with stamp discipline (from lc-bmb)
+- `lcm-a5e` — shopping-list write tools with stamp discipline (from lc-bmb) ✅
 - `lcm-bgp` — shared merge test vectors across app and MCP (from lc-0sg)
 - `lcm-gll` — read card photo bytes, which needs the `ImageCipher` port
 - `lcm-co0` — decline/dismiss an inbound share request

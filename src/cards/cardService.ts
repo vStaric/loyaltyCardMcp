@@ -4,6 +4,7 @@ import type { Identity } from '../crypto/identity.js';
 import { mergeCards, type MergedCard, type SharedCards } from '../merge/cardMerge.js';
 import { grants, signingKeyOf, toRecipient, type Connection } from '../sharing/roster.js';
 import type { RosterStore } from '../sharing/rosterStore.js';
+import type { UnreadableReason, UnreadableSource } from '../sharing/unreadable.js';
 import { decodeCardsSnapshot, encodeCardsSnapshot } from '../sync/cardSnapshot.js';
 import { publishResource } from '../sync/publishResource.js';
 import { RESOURCE_CARDS, type SyncStateStore } from '../sync/syncState.js';
@@ -388,27 +389,12 @@ export interface CardsView {
   readonly connectionCount: number;
 }
 
-/** Why one connection's cards did not make it into the view. */
-export type UnreadableReason =
-  /** Published, verified — and no content key wrapped to us. The scope refusal (lc-chp). */
-  | 'not_granted'
-  /** No cards envelope at that address at all. */
-  | 'not_published'
-  /** Unsigned, signed by someone else, or failing the pinned key. A trust failure. */
-  | 'not_verified'
-  /** A key was wrapped to us and still would not open the body. */
-  | 'undecryptable'
-  /** Decrypted, but not a card list this version can parse. */
-  | 'malformed'
-  /** The fetch itself failed — network, timeout, server error. */
-  | 'unreachable';
-
-export interface UnreadableSource {
-  readonly uuid: string;
-  readonly displayName: string | null;
-  readonly reason: UnreadableReason;
-  readonly detail: string;
-}
+/**
+ * Why one connection's cards did not make it into the view — the shared vocabulary in
+ * {@link import('../sharing/unreadable.js')}, re-exported so a caller holding a
+ * {@link CardsView} has the type to hand.
+ */
+export type { UnreadableReason, UnreadableSource };
 
 /** Fields for a new card. `barcodeFormat` is required whenever `barcodeValue` is set. */
 export interface NewCard {

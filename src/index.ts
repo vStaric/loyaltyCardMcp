@@ -23,7 +23,14 @@ export * from './cards/cardService.js';
 
 export * from './merge/cardMerge.js';
 
+export * from './shopping/merge.js';
+export * from './shopping/model.js';
+export * from './shopping/shoppingService.js';
+export * from './shopping/snapshot.js';
+export * from './shopping/writer.js';
+
 export * from './mcp/cardTools.js';
+export * from './mcp/shoppingTools.js';
 export * from './mcp/server.js';
 export * from './mcp/tool.js';
 
@@ -41,6 +48,7 @@ export * from './sharing/keyFingerprint.js';
 export * from './sharing/roster.js';
 export * from './sharing/rosterStore.js';
 export * from './sharing/shareCode.js';
+export * from './sharing/unreadable.js';
 
 export * from './sync/apiError.js';
 export * from './sync/blobPointer.js';

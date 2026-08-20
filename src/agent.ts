@@ -1,4 +1,5 @@
 import { CardService } from './cards/cardService.js';
+import { ShoppingService } from './shopping/shoppingService.js';
 import type { PeerConfig } from './config.js';
 import { TolarPeer } from './peer.js';
 import { ConnectionManager } from './sharing/connections.js';
@@ -17,6 +18,7 @@ export interface TolarAgent {
   readonly peer: TolarPeer;
   readonly roster: RosterStore;
   readonly cards: CardService;
+  readonly shopping: ShoppingService;
   readonly connections: ConnectionManager;
 }
 
@@ -37,7 +39,13 @@ export async function openAgent(
   const cards = new CardService(peer.identity, peer.api, peer.crypto, peer.state, roster, {
     ensureRegistered: () => peer.ensureUserRegistered(),
   });
-  const republishers: (() => Promise<unknown>)[] = [() => cards.republish()];
+  const shopping = new ShoppingService(peer.identity, peer.api, peer.crypto, peer.state, roster, {
+    ensureRegistered: () => peer.ensureUserRegistered(),
+  });
+  const republishers: (() => Promise<unknown>)[] = [
+    () => cards.republish(),
+    () => shopping.republish(),
+  ];
   const connections = new ConnectionManager(
     peer.identity,
     peer.api,
@@ -48,5 +56,5 @@ export async function openAgent(
       for (const republish of republishers) await republish();
     },
   );
-  return { peer, roster, cards, connections };
+  return { peer, roster, cards, shopping, connections };
 }
