@@ -79,8 +79,10 @@ rather than by round-trip tests, which cannot see this class of break at all:
 - **share code payload** — a code emitted by the app's `ShareCode.encode`,
   transliterated onto the JVM (`test/sharing.test.ts`)
 
-`ShoppingMerge` and `CardMerge` land with the tool beads, and `lcm-bgp` is where their
-shared vectors go.
+`CardMerge` landed with the card tools (`lcm-ffs`) and `ShoppingMerge` lands with the
+list ones; `lcm-bgp` is where their shared vectors go. The card snapshot encoder writes
+its fields in the app's declaration order and omits defaults the way `kotlinx` does, so
+the two implementations' bytes can be compared rather than merely re-parsed.
 
 ### Where the agent's keys live, and what protects them
 
@@ -113,20 +115,63 @@ user's own.
 ```bash
 export TOLAR_API_URL=https://your-tolar-backend.example
 npx tolar-mcp pair              # publishes the user row, prints QR + code + safety number
+npx tolar-mcp connections       # who this agent shares with, and who is asking
+npx tolar-mcp accept 7          # accept a request, after comparing its safety number
+npx tolar-mcp revoke <uuid>     # stop sharing, and rotate the content key away
+npx tolar-mcp serve             # the MCP server, on stdio — what a host launches
 npx tolar-mcp status            # account uuid and config location
 npx tolar-mcp export-phrase     # the recovery phrase — the complete backup
 npx tolar-mcp import-phrase "…" # adopt an identity on another host
 ```
 
-The MCP tool surface itself is not in this bead. `pair` is what has to exist first,
-because an agent nobody has accepted has nothing to expose.
+## The card tools (`lcm-ffs`)
+
+`serve` exposes five tools: `list_cards`, `get_card`, `add_card`, `update_card`,
+`delete_card`. Three properties are the deliverable, and each has tests naming it.
+
+**The ownership refusal is explicit.** `cards/{uuid}` is a single blob signed by one
+author, so an agent editing the user's card is not withheld — it is impossible, the
+server would reject the signature. `update_card` and `delete_card` on somebody else's
+card fail with *"cards belong to the account that created them"*, naming the owner, and
+every card in a result carries `editableByThisAgent` so a caller never has to infer it.
+An agent that reported an edit which did not happen would be worse than one that refuses.
+
+**An ungranted resource is a refusal, not an empty list.** A connection that granted the
+shopping list but not the cards (`lc-chp`) publishes a cards envelope with no content key
+wrapped to this agent. That surfaces as a named `not_granted` entry with the sentence to
+say — never as "you have no cards", which would be a lie about the user's data. The other
+reasons (`not_published`, `not_verified`, `undecryptable`, `malformed`, `unreachable`)
+stay distinguishable for the same reason.
+
+**Writes never rest on a degraded read.** The cards blob is published whole, so the write
+path re-reads it first — and a read this peer cannot verify or open throws rather than
+yielding an empty list, because "no cards" followed by a publish is how you erase them all.
+
+Photos travel as content-addressed blobs. This peer carries their pointers through a
+re-publish untouched (losing them would erase the author's photos) and reports that a
+photo *exists*; reading the bytes needs the app's `ImageCipher` format and is `lcm-gll`.
+
+### Who this agent shares with is not a tool
+
+Pairing, accepting and revoking are CLI commands, deliberately. `POST /api/requestShare`
+is permissionless — anyone who learns this agent's uuid can queue a request — and
+accepting one wraps this agent's content keys to the requester. An agent that could
+accept its own connections would be one prompt-injection away from sharing with whoever
+asked. The model gets to use a grant; only the operator gets to make one, and only the
+operator can do the step that carries the trust: comparing the safety number against the
+one the app shows.
+
+What the *user* shares back is set on their accept screen, not here. This agent learns it
+only by whether their envelope carries a key it can open.
 
 ## Beads
 
 Work is tracked in the `loyaltyCardMcp` Gas Town rig (prefix `lcm-`). Design lives
 in the Android repo at `docs/PRD-agent-connection.md` (§4, §6, §7).
 
-- peer core — identity, envelope crypto, REST client (from lc-f9o)
-- card read + agent-owned card write tools (from lc-6du)
-- shopping-list write tools with stamp discipline (from lc-bmb)
-- shared merge test vectors across app and MCP (from lc-0sg)
+- `lcm-au3` — peer core: identity, envelope crypto, REST client (from lc-f9o) ✅
+- `lcm-ffs` — card read + agent-owned card write tools (from lc-6du) ✅
+- `lcm-a5e` — shopping-list write tools with stamp discipline (from lc-bmb)
+- `lcm-bgp` — shared merge test vectors across app and MCP (from lc-0sg)
+- `lcm-gll` — read card photo bytes, which needs the `ImageCipher` port
+- `lcm-co0` — decline/dismiss an inbound share request

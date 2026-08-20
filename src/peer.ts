@@ -30,7 +30,13 @@ export class TolarPeer {
     readonly sodium: SodiumCrypto,
     readonly api: TolarApi,
     readonly crypto: EnvelopeCrypto,
-    private readonly state: SyncStateStore,
+    /**
+     * Version bookkeeping for this peer's own resources. Public because every layer
+     * built on this peer publishes something — the card blob, the list slice, the grant
+     * doc — and they must all target versions from one store; a second one would hand
+     * out a `ver` the server has already seen.
+     */
+    readonly state: SyncStateStore,
   ) {}
 
   /**

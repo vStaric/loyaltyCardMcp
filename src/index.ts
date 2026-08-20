@@ -1,6 +1,6 @@
 /**
- * The Tolar MCP server's **peer core** — identity, envelope crypto, and the REST
- * client (PRD-agent-connection §7.1, bead lcm-au3).
+ * The Tolar MCP server: an AI agent as an ordinary Tolar peer, with the card tool
+ * surface built on the peer core (PRD-agent-connection §7.1, §7.3).
  *
  * This is a Tolar *client*, not a backend feature: it speaks the existing REST API
  * with the existing envelope crypto, so the server gains no endpoint and learns
@@ -14,8 +14,18 @@
  * the server answers with `bad_signature`.
  */
 
+export * from './agent.js';
 export * from './config.js';
 export * from './peer.js';
+
+export * from './cards/card.js';
+export * from './cards/cardService.js';
+
+export * from './merge/cardMerge.js';
+
+export * from './mcp/cardTools.js';
+export * from './mcp/server.js';
+export * from './mcp/tool.js';
 
 export * from './crypto/bip39.js';
 export * from './crypto/envelope.js';
@@ -26,12 +36,18 @@ export * from './crypto/identityStore.js';
 export * from './crypto/sodium.js';
 
 export * from './sharing/connectInvite.js';
+export * from './sharing/connections.js';
 export * from './sharing/keyFingerprint.js';
+export * from './sharing/roster.js';
+export * from './sharing/rosterStore.js';
 export * from './sharing/shareCode.js';
 
 export * from './sync/apiError.js';
+export * from './sync/blobPointer.js';
+export * from './sync/cardSnapshot.js';
 export * from './sync/httpTolarApi.js';
 export * from './sync/json.js';
+export * from './sync/publishResource.js';
 export * from './sync/requestSigner.js';
 export * from './sync/syncState.js';
 export * from './sync/tolarApi.js';

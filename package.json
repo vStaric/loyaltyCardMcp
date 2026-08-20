@@ -24,6 +24,7 @@
     "format:write": "prettier --write ."
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "libsodium-wrappers": "^0.7.15",
     "qrcode": "^1.5.4"
   },
