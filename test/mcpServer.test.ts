@@ -1,7 +1,10 @@
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { describe, expect, it } from 'vitest';
-import { SERVER_INSTRUCTIONS, SERVER_NAME, createServer } from '../src/mcp/server.js';
+import type { TolarAgent } from '../src/agent.js';
+import { cardTools } from '../src/mcp/cardTools.js';
+import { SERVER_INSTRUCTIONS, SERVER_NAME, createServer, toolsFor } from '../src/mcp/server.js';
+import { shoppingTools } from '../src/mcp/shoppingTools.js';
 import type { ToolDefinition } from '../src/mcp/tool.js';
 
 /**
@@ -34,11 +37,11 @@ const tools: ToolDefinition[] = [
   },
 ];
 
-async function connected() {
+async function connected(served: readonly ToolDefinition[] = tools) {
   const client = new Client({ name: 'test', version: '0' });
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([
-    createServer(tools).connect(serverTransport),
+    createServer(served).connect(serverTransport),
     client.connect(clientTransport),
   ]);
   return client;
@@ -80,5 +83,77 @@ describe('the MCP server', () => {
     const result = await (await connected()).callTool({ name: 'nope', arguments: {} });
     expect(result.isError).toBe(true);
     expect((result.content as { text: string }[])[0]!.text).toContain('no such tool');
+  });
+});
+
+/**
+ * The registry itself — what `serveStdio` actually hands a host.
+ *
+ * The cases above prove transport behaviour against synthetic tools, and the group tests
+ * prove each group is well-formed; neither says whether `toolsFor` still includes a
+ * group. That gap is quiet by construction: drop `shoppingTools(...)` from the list and
+ * typecheck, lint, build and every other test stay green while nine tools become
+ * unreachable over MCP. So this asserts the real registry, by name.
+ */
+
+/** Every tool `toolsFor` is expected to expose. Names, not a count: swapping one group
+ * for another keeps the count and is exactly the change worth failing on. */
+const EXPECTED_TOOLS = [
+  'list_cards',
+  'get_card',
+  'add_card',
+  'update_card',
+  'delete_card',
+  'list_shopping',
+  'add_items',
+  'rename_item',
+  'set_checked',
+  'set_footnote',
+  'move_item',
+  'create_section',
+  'rename_section',
+  'remove_item',
+] as const;
+
+/**
+ * A stand-in for the agent. Composing the registry hands each group its service and
+ * calls nothing on it, so no backend is needed here — and the throwing proxy keeps that
+ * true: if composition ever starts touching a service, this fails by name instead of
+ * quietly requiring a live account.
+ */
+function stubAgent(): TolarAgent {
+  const service = new Proxy(
+    {},
+    {
+      get(_target, property) {
+        throw new Error(`composing the registry must not use the service: ${String(property)}`);
+      },
+    },
+  );
+  return { cards: service, shopping: service } as TolarAgent;
+}
+
+describe('the tool registry', () => {
+  it('exposes every card and shopping tool, by name', () => {
+    expect(toolsFor(stubAgent()).map((t) => t.name)).toEqual([...EXPECTED_TOOLS]);
+  });
+
+  it('leaves no group behind — the expected set is every group, whole', () => {
+    // Keeps the list above honest. Dropping a group from toolsFor and editing
+    // EXPECTED_TOOLS to match would pass the case above; it fails here.
+    const agent = stubAgent();
+    const grouped = [...cardTools(agent.cards), ...shoppingTools(agent.shopping)].map(
+      (t) => t.name,
+    );
+    expect([...EXPECTED_TOOLS].sort()).toEqual([...grouped].sort());
+  });
+
+  it('serves that registry over a session, schemas and all', async () => {
+    const { tools: listed } = await (await connected(toolsFor(stubAgent()))).listTools();
+    expect(listed.map((t) => t.name)).toEqual([...EXPECTED_TOOLS]);
+    for (const tool of listed) {
+      expect(tool.description, tool.name).toBeTruthy();
+      expect(tool.inputSchema, tool.name).toMatchObject({ type: 'object' });
+    }
   });
 });
