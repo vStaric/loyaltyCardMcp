@@ -1,7 +1,19 @@
 import { BARCODE_FORMATS, hasAnyPhoto, type Card } from '../cards/card.js';
+import {
+  PHOTO_SLOTS,
+  photoSlotFromName,
+  type CardPhotoService,
+  type PhotoSlot,
+} from '../cards/cardPhotos.js';
 import type { CardService, CardsView, UnreadableSource } from '../cards/cardService.js';
 import type { MergedCard } from '../merge/cardMerge.js';
-import { requireString, optionalString, type ToolDefinition } from './tool.js';
+import {
+  requireString,
+  optionalString,
+  ToolContent,
+  ToolInputError,
+  type ToolDefinition,
+} from './tool.js';
 
 /**
  * The card tools (PRD-agent-connection §7.3): read every card that has been shared
@@ -17,10 +29,14 @@ import { requireString, optionalString, type ToolDefinition } from './tool.js';
  * An agent that reported a successful edit which did not happen would be worse than
  * one that refuses — hence no silent no-ops anywhere in this file.
  */
-export function cardTools(service: CardService): readonly ToolDefinition[] {
+export function cardTools(
+  service: CardService,
+  photos: CardPhotoService,
+): readonly ToolDefinition[] {
   return [
     listCards(service),
     getCard(service),
+    getCardPhoto(photos),
     addCard(service),
     updateCard(service),
     deleteCard(service),
@@ -53,7 +69,9 @@ function getCard(service: CardService): ToolDefinition {
     name: 'get_card',
     title: 'Get one loyalty card',
     description:
-      'One card in full, by id, including its barcode value and format. ' + OWNERSHIP_NOTE,
+      'One card in full, by id, including its barcode value and format, and which of its ' +
+      'photo slots hold a picture — get_card_photo returns the picture itself. ' +
+      OWNERSHIP_NOTE,
     inputSchema: {
       type: 'object',
       properties: {
@@ -80,6 +98,110 @@ function getCard(service: CardService): ToolDefinition {
       return { found: true, card: renderCard(card) };
     },
   };
+}
+
+/**
+ * The one tool here that answers with bytes rather than facts.
+ *
+ * A photo is fetched from the blob store and decrypted on demand, not folded into
+ * `get_card`: a card read is cheap and frequent, an image is neither, and a model that
+ * wanted the barcode should not pay 2 MiB of base64 for it. Asking is one extra call
+ * and the summary on every card says whether there is anything to ask for.
+ */
+function getCardPhoto(photos: CardPhotoService): ToolDefinition {
+  return {
+    name: 'get_card_photo',
+    title: 'Get a card photo',
+    description:
+      'The picture in one slot of one card — front, back, or logo — returned as an image. ' +
+      'list_cards and get_card report which slots have a photo; call this for the bytes. ' +
+      'Photos are readable exactly when the card is, so a connection that shares its cards ' +
+      'shares their photos too. ' +
+      OWNERSHIP_NOTE,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        cardId: { type: 'string', description: 'The card id, as list_cards reports it.' },
+        slot: {
+          type: 'string',
+          enum: [...PHOTO_SLOTS],
+          description: 'Which picture: the front of the card, its back, or the retailer logo.',
+        },
+      },
+      required: ['cardId', 'slot'],
+      additionalProperties: false,
+    },
+    annotations: { readOnlyHint: true, openWorldHint: true },
+    run: async (args) => {
+      const cardId = requireString(args, 'cardId');
+      const slot = requireSlot(args);
+      const read = await photos.read(cardId, slot);
+      if (!read.available) {
+        // A miss on a card nobody shared with us is a different sentence from a miss on
+        // a card that simply has no photo, and only the first one implicates a
+        // connection that withheld its cards — so the refusals travel with that one.
+        const card = read.card;
+        return {
+          available: false,
+          cardId,
+          slot,
+          reason: read.reason,
+          ...(card
+            ? { card: renderCard(card) }
+            : { unreadable: read.view.unreadable.map(renderUnreadable) }),
+          message: card ? read.detail : unreadableHint(read.view, read.detail),
+        };
+      }
+      const { photo } = read;
+      const summary = {
+        available: true,
+        cardId,
+        slot,
+        card: renderCard(read.card),
+        bytes: photo.bytes.length,
+        mediaType: photo.mediaType,
+        blobHash: photo.hash,
+      };
+      if (!photo.mediaType) {
+        // The bytes decrypted — right key, right address — and are not a picture any
+        // format this version knows. Labelling them `image/*` anyway would hand the host
+        // something it cannot draw and blame it for the failure, so say what happened
+        // instead and hand back nothing to render.
+        return {
+          ...summary,
+          available: false,
+          reason: 'unrecognised_format',
+          leadingBytes: hexPrefix(photo.bytes),
+          message:
+            `this card's ${slot} photo decrypted correctly but is not an image format this ` +
+            'server recognises, so there is nothing safe to render. The card and its blob ' +
+            'are intact — this is a gap in this server, not damage to the photo.',
+        };
+      }
+      return new ToolContent([
+        { type: 'text', text: JSON.stringify(summary, null, 2) },
+        {
+          type: 'image',
+          data: Buffer.from(photo.bytes).toString('base64'),
+          mimeType: photo.mediaType,
+        },
+      ]);
+    },
+  };
+}
+
+/** The `slot` argument, or a refusal naming the three that exist. */
+function requireSlot(args: Record<string, unknown>): PhotoSlot {
+  const slot = photoSlotFromName(requireString(args, 'slot'));
+  if (!slot) {
+    throw new ToolInputError(`slot must be one of: ${PHOTO_SLOTS.join(', ')}`);
+  }
+  return slot;
+}
+
+/** The first few bytes as hex — enough to identify a format, far too few to be one. */
+function hexPrefix(bytes: Uint8Array): string {
+  return Buffer.from(bytes.subarray(0, 8)).toString('hex');
 }
 
 function addCard(service: CardService): ToolDefinition {
@@ -283,10 +405,9 @@ function renderCard(merged: MergedCard): Record<string, unknown> {
 /**
  * Which image slots the card names.
  *
- * Presence, not bytes: this peer carries photo pointers through a re-publish but cannot
- * open a blob — the app's image format is its own port, filed as lcm-gll. Saying "there
- * is a front photo here" is true and useful; pretending there is no photo because we
- * cannot read it would not be.
+ * Presence, not bytes. The bytes are a blob fetch and a decrypt away — `get_card_photo`
+ * does both — and inlining them here would make every card read carry megabytes nobody
+ * asked for. Saying which slots are filled is what lets a caller decide whether to.
  */
 function photoSummary(card: Card): Record<string, unknown> {
   return {
@@ -294,7 +415,7 @@ function photoSummary(card: Card): Record<string, unknown> {
     back: card.photos.back !== null,
     logo: card.photos.logo !== null,
     note: hasAnyPhoto(card.photos)
-      ? 'This agent can see that a photo exists but cannot read its contents.'
+      ? 'Call get_card_photo with this card id and the slot to see the picture itself.'
       : undefined,
   };
 }

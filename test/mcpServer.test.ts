@@ -5,7 +5,7 @@ import type { TolarAgent } from '../src/agent.js';
 import { cardTools } from '../src/mcp/cardTools.js';
 import { SERVER_INSTRUCTIONS, SERVER_NAME, createServer, toolsFor } from '../src/mcp/server.js';
 import { shoppingTools } from '../src/mcp/shoppingTools.js';
-import type { ToolDefinition } from '../src/mcp/tool.js';
+import { ToolContent, type ToolDefinition } from '../src/mcp/tool.js';
 
 /**
  * The protocol edge: a real MCP client talking to this server over a linked pair of
@@ -25,6 +25,17 @@ const tools: ToolDefinition[] = [
     inputSchema: { type: 'object', properties: { text: { type: 'string' } } },
     annotations: { readOnlyHint: true },
     run: async (args) => ({ said: args.text }),
+  },
+  {
+    name: 'picture',
+    title: 'Picture',
+    description: 'Returns bytes rather than a value.',
+    inputSchema: { type: 'object', properties: {} },
+    run: async () =>
+      new ToolContent([
+        { type: 'text', text: '{"bytes":1}' },
+        { type: 'image', data: 'AQ==', mimeType: 'image/png' },
+      ]),
   },
   {
     name: 'refuse',
@@ -61,7 +72,7 @@ describe('the MCP server', () => {
 
   it('lists its tools with their schemas and hints', async () => {
     const { tools: listed } = await (await connected()).listTools();
-    expect(listed.map((t) => t.name)).toEqual(['echo', 'refuse']);
+    expect(listed.map((t) => t.name)).toEqual(['echo', 'picture', 'refuse']);
     expect(listed[0]!.annotations?.readOnlyHint).toBe(true);
     expect(listed[0]!.inputSchema).toMatchObject({ type: 'object' });
   });
@@ -69,6 +80,17 @@ describe('the MCP server', () => {
   it('returns a tool result as JSON text', async () => {
     const result = await (await connected()).callTool({ name: 'echo', arguments: { text: 'hi' } });
     expect(JSON.parse((result.content as { text: string }[])[0]!.text)).toEqual({ said: 'hi' });
+  });
+
+  it('passes a tool that answers with bytes through as image content', async () => {
+    // The photo tool is the only one whose answer is not JSON. A host renders an image
+    // block; a summary flattened into base64 text would arrive as a wall of characters
+    // no model can see and no user can look at.
+    const result = await (await connected()).callTool({ name: 'picture', arguments: {} });
+    expect(result.content).toEqual([
+      { type: 'text', text: '{"bytes":1}' },
+      { type: 'image', data: 'AQ==', mimeType: 'image/png' },
+    ]);
   });
 
   it('reports a refusal as a failed tool call carrying its reason', async () => {
@@ -101,6 +123,7 @@ describe('the MCP server', () => {
 const EXPECTED_TOOLS = [
   'list_cards',
   'get_card',
+  'get_card_photo',
   'add_card',
   'update_card',
   'delete_card',
@@ -130,7 +153,7 @@ function stubAgent(): TolarAgent {
       },
     },
   );
-  return { cards: service, shopping: service } as TolarAgent;
+  return { cards: service, photos: service, shopping: service } as TolarAgent;
 }
 
 describe('the tool registry', () => {
@@ -142,7 +165,7 @@ describe('the tool registry', () => {
     // Keeps the list above honest. Dropping a group from toolsFor and editing
     // EXPECTED_TOOLS to match would pass the case above; it fails here.
     const agent = stubAgent();
-    const grouped = [...cardTools(agent.cards), ...shoppingTools(agent.shopping)].map(
+    const grouped = [...cardTools(agent.cards, agent.photos), ...shoppingTools(agent.shopping)].map(
       (t) => t.name,
     );
     expect([...EXPECTED_TOOLS].sort()).toEqual([...grouped].sort());

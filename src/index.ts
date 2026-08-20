@@ -19,7 +19,12 @@ export * from './config.js';
 export * from './peer.js';
 
 export * from './cards/card.js';
+export * from './cards/cardPhotos.js';
 export * from './cards/cardService.js';
+
+export * from './images/imageBlob.js';
+export * from './images/imageCipher.js';
+export * from './images/mediaType.js';
 
 export * from './merge/cardMerge.js';
 

@@ -4,7 +4,7 @@ import { CallToolRequestSchema, ListToolsRequestSchema } from '@modelcontextprot
 import type { TolarAgent } from '../agent.js';
 import { cardTools } from './cardTools.js';
 import { shoppingTools } from './shoppingTools.js';
-import { argsOf, type ToolDefinition } from './tool.js';
+import { ToolContent, argsOf, type ToolDefinition } from './tool.js';
 
 /**
  * The MCP surface: this agent's Tolar account, exposed to a model as tools.
@@ -35,6 +35,9 @@ CARDS — read everything, manage only its own.
 - It can add cards. They land in this agent's own list and appear in the user's grid
   attributed to this agent — deduplicated by barcode, like any peer's card.
 - It can edit and delete the cards IT added.
+- It can see a card's photos. list_cards and get_card say which of the three slots
+  (front, back, logo) hold one; get_card_photo fetches that one and returns the image.
+  Photos are readable exactly when the card is — there is no separate photo permission.
 - It CANNOT edit or delete a card the user created. That is not a policy this server
   applies; a card is a single blob signed by its author, and the server would reject the
   write. A human peer cannot edit the user's cards either.
@@ -62,7 +65,7 @@ a refusal, not an empty result — never report it to the user as "you have no c
  * and that must not be reachable only through a stdio session.
  */
 export function toolsFor(agent: TolarAgent): readonly ToolDefinition[] {
-  return [...cardTools(agent.cards), ...shoppingTools(agent.shopping)];
+  return [...cardTools(agent.cards, agent.photos), ...shoppingTools(agent.shopping)];
 }
 
 /**
@@ -97,6 +100,9 @@ export function createServer(tools: readonly ToolDefinition[]): Server {
     }
     try {
       const result = await tool.run(argsOf(request.params.arguments));
+      // A tool that has bytes to return says so with a `ToolContent`; everything else
+      // is a value, and a value is JSON.
+      if (result instanceof ToolContent) return { content: result.blocks };
       return { content: [{ type: 'text' as const, text: JSON.stringify(result, null, 2) }] };
     } catch (e) {
       return errorResult(e instanceof Error ? e.message : String(e));

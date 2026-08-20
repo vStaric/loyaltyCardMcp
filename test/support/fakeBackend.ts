@@ -46,6 +46,10 @@ export class FakeBackend implements TolarApi {
   slicePuts = 0;
   /** Lists whose reads fail, to exercise the unreachable path. */
   readonly unreachableLists = new Set<string>();
+  /** The content-addressed blob store: photo ciphertext, keyed by its address. */
+  readonly blobs = new Map<string, Uint8Array>();
+  /** Blobs whose fetch fails, to exercise the unreachable path. */
+  readonly unreachableBlobs = new Set<string>();
 
   async getUser(uuid: string): Promise<UserProfileDto | null> {
     return this.users.get(uuid) ?? null;
@@ -106,12 +110,22 @@ export class FakeBackend implements TolarApi {
     return ver;
   }
 
+  /**
+   * Store `bytes` at `hash` **without** re-deriving the address, so a test can seed a
+   * blob that does not hash to the pointer naming it. The real server would refuse
+   * that; the point of allowing it here is that the client must not trust it either.
+   */
+  async putBlob(hash: string, bytes: Uint8Array): Promise<void> {
+    this.blobs.set(hash, bytes);
+  }
+
+  async getBlob(hash: string): Promise<Uint8Array | null> {
+    if (this.unreachableBlobs.has(hash)) throw new Error('backend unavailable');
+    return this.blobs.get(hash) ?? null;
+  }
+
   // --- not exercised by either tool surface ------------------------------------
   async deleteUser(): Promise<void> {}
-  async putBlob(): Promise<void> {}
-  async getBlob(): Promise<Uint8Array | null> {
-    return null;
-  }
   async postRequestShare(): Promise<number> {
     return 1;
   }

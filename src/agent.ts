@@ -1,3 +1,4 @@
+import { CardPhotoService, maxPhotoBytesFrom } from './cards/cardPhotos.js';
 import { CardService } from './cards/cardService.js';
 import { ShoppingService } from './shopping/shoppingService.js';
 import type { PeerConfig } from './config.js';
@@ -18,6 +19,8 @@ export interface TolarAgent {
   readonly peer: TolarPeer;
   readonly roster: RosterStore;
   readonly cards: CardService;
+  /** Reads the photo bytes of any card `cards` can see. */
+  readonly photos: CardPhotoService;
   readonly shopping: ShoppingService;
   readonly connections: ConnectionManager;
 }
@@ -39,6 +42,7 @@ export async function openAgent(
   const cards = new CardService(peer.identity, peer.api, peer.crypto, peer.state, roster, {
     ensureRegistered: () => peer.ensureUserRegistered(),
   });
+  const photos = new CardPhotoService(cards, peer.api, { maxBytes: maxPhotoBytesFrom(env) });
   const shopping = new ShoppingService(peer.identity, peer.api, peer.crypto, peer.state, roster, {
     ensureRegistered: () => peer.ensureUserRegistered(),
   });
@@ -56,5 +60,5 @@ export async function openAgent(
       for (const republish of republishers) await republish();
     },
   );
-  return { peer, roster, cards, shopping, connections };
+  return { peer, roster, cards, photos, shopping, connections };
 }

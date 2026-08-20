@@ -2,16 +2,19 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeAll, describe, expect, it } from 'vitest';
+import { NO_PHOTOS } from '../src/cards/card.js';
+import { CardPhotoService } from '../src/cards/cardPhotos.js';
 import { CardService } from '../src/cards/cardService.js';
 import { EnvelopeCrypto } from '../src/crypto/envelopeCrypto.js';
 import type { Identity } from '../src/crypto/identity.js';
 import { initSodium, type SodiumCrypto } from '../src/crypto/sodium.js';
 import { cardTools } from '../src/mcp/cardTools.js';
-import type { ToolDefinition } from '../src/mcp/tool.js';
+import { ToolContent, type ToolDefinition } from '../src/mcp/tool.js';
 import type { Connection } from '../src/sharing/roster.js';
 import { RosterStore } from '../src/sharing/rosterStore.js';
 import { SyncStateStore } from '../src/sync/syncState.js';
 import { FakeBackend, cardOf, identityOf, publishCardsAs } from './support/fakeBackend.js';
+import { TINY_PNG, packPhoto } from './support/photos.js';
 
 /**
  * The tools as a model meets them.
@@ -64,7 +67,7 @@ function harness(connections: readonly Connection[] = [connection()]) {
     now: () => 1_800_000_000_000,
     newId: () => 'agent-card',
   });
-  const tools = cardTools(service);
+  const tools = cardTools(service, new CardPhotoService(service, backend));
   const tool = (name: string): ToolDefinition => {
     const found = tools.find((t) => t.name === name);
     if (!found) throw new Error(`no tool named ${name}`);
@@ -74,10 +77,11 @@ function harness(connections: readonly Connection[] = [connection()]) {
 }
 
 describe('the tool list', () => {
-  it('offers exactly the five card tools the design names', () => {
+  it('offers exactly the six card tools the design names', () => {
     expect(harness().tools.map((t) => t.name)).toEqual([
       'list_cards',
       'get_card',
+      'get_card_photo',
       'add_card',
       'update_card',
       'delete_card',
@@ -94,6 +98,7 @@ describe('the tool list', () => {
   it('marks the reads read-only and the delete destructive', () => {
     const { tool } = harness();
     expect(tool('list_cards').annotations?.readOnlyHint).toBe(true);
+    expect(tool('get_card_photo').annotations?.readOnlyHint).toBe(true);
     expect(tool('delete_card').annotations?.destructiveHint).toBe(true);
     expect(tool('add_card').annotations?.destructiveHint).toBe(false);
   });
@@ -133,7 +138,7 @@ describe('list_cards', () => {
     expect(result.message).toContain('no connections yet');
   });
 
-  it('reports that a photo exists without pretending to have read it', async () => {
+  it('reports which slots hold a photo, and how to see one', async () => {
     const { backend, tool } = harness();
     publishCardsAs(
       backend,
@@ -159,7 +164,7 @@ describe('list_cards', () => {
       cards: { photos: { front: boolean; note?: string } }[];
     };
     expect(result.cards[0]!.photos.front).toBe(true);
-    expect(result.cards[0]!.photos.note).toContain('cannot read its contents');
+    expect(result.cards[0]!.photos.note).toContain('get_card_photo');
   });
 });
 
@@ -190,6 +195,105 @@ describe('get_card', () => {
 
   it('rejects a call with no card id', async () => {
     await expect(harness([]).tool('get_card').run({})).rejects.toThrow(/cardId is required/);
+  });
+});
+
+describe('get_card_photo', () => {
+  /** Publish one of the user's cards carrying `pointer` in its front slot. */
+  async function sharedCardWithPhoto(backend: FakeBackend, plain?: Uint8Array) {
+    const packed = packPhoto(plain);
+    await backend.putBlob(packed.pointer.hash, packed.bytes);
+    publishCardsAs(
+      backend,
+      crypto,
+      user,
+      [
+        cardOf({
+          id: 'u1',
+          title: 'Bakery',
+          photos: { ...NO_PHOTOS, front: packed.pointer },
+        }),
+      ],
+      [user, agent],
+    );
+    return packed;
+  }
+
+  it('answers with the picture itself, and says whose card it came off', async () => {
+    const { backend, tool } = harness();
+    await sharedCardWithPhoto(backend);
+
+    const result = await tool('get_card_photo').run({ cardId: 'u1', slot: 'front' });
+    // Bytes, not a JSON description of bytes: this is the one tool here whose answer a
+    // host is meant to render rather than read.
+    expect(result).toBeInstanceOf(ToolContent);
+    const blocks = (result as ToolContent).blocks;
+    expect(blocks[1]).toEqual({
+      type: 'image',
+      data: Buffer.from(TINY_PNG).toString('base64'),
+      mimeType: 'image/png',
+    });
+    const summary = JSON.parse((blocks[0] as { text: string }).text);
+    expect(summary).toMatchObject({
+      available: true,
+      slot: 'front',
+      mediaType: 'image/png',
+      bytes: TINY_PNG.length,
+    });
+    expect(summary.card).toMatchObject({ title: 'Bakery', editableByThisAgent: false });
+  });
+
+  it('does not hand a host bytes it cannot draw', async () => {
+    const { backend, tool } = harness();
+    await sharedCardWithPhoto(backend, new Uint8Array([1, 2, 3, 4]));
+
+    const result = (await tool('get_card_photo').run({ cardId: 'u1', slot: 'front' })) as {
+      available: boolean;
+      reason: string;
+      message: string;
+    };
+    expect(result.available).toBe(false);
+    expect(result.reason).toBe('unrecognised_format');
+    // And it says the photo is fine — the gap is this server's.
+    expect(result.message).toContain('not damage to the photo');
+  });
+
+  it('carries the refusals with a miss, exactly as get_card does', async () => {
+    const { backend, tool } = harness();
+    publishCardsAs(backend, crypto, user, [cardOf({ id: 'u1', title: 'Secret' })], [user]);
+
+    const result = (await tool('get_card_photo').run({ cardId: 'u1', slot: 'front' })) as {
+      available: boolean;
+      reason: string;
+      message: string;
+      unreadable: unknown[];
+    };
+    expect(result).toMatchObject({ available: false, reason: 'no_such_card' });
+    expect(result.unreadable).toHaveLength(1);
+    expect(result.message).toContain('has not granted this agent the cards resource');
+  });
+
+  it('names an empty slot as empty, with the card it looked at', async () => {
+    const { backend, tool } = harness();
+    publishCardsAs(backend, crypto, user, [cardOf({ id: 'u1', title: 'Plain' })], [user, agent]);
+
+    const result = (await tool('get_card_photo').run({ cardId: 'u1', slot: 'back' })) as {
+      available: boolean;
+      reason: string;
+      message: string;
+      card: { title: string };
+    };
+    expect(result).toMatchObject({ available: false, reason: 'no_photo' });
+    expect(result.message).toBe('this card has no back photo');
+    expect(result.card.title).toBe('Plain');
+  });
+
+  it('refuses a slot that does not exist by naming the three that do', async () => {
+    const { tool } = harness([]);
+    await expect(tool('get_card_photo').run({ cardId: 'u1', slot: 'side' })).rejects.toThrow(
+      /front, back, logo/,
+    );
+    await expect(tool('get_card_photo').run({ cardId: 'u1' })).rejects.toThrow(/slot is required/);
   });
 });
 

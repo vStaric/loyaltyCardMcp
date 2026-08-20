@@ -156,8 +156,9 @@ npx tolar-mcp import-phrase "…" # adopt an identity on another host
 
 ## The card tools (`lcm-ffs`)
 
-`serve` exposes five tools: `list_cards`, `get_card`, `add_card`, `update_card`,
-`delete_card`. Three properties are the deliverable, and each has tests naming it.
+`serve` exposes six tools: `list_cards`, `get_card`, `get_card_photo`, `add_card`,
+`update_card`, `delete_card`. Three properties are the deliverable, and each has tests
+naming it.
 
 **The ownership refusal is explicit.** `cards/{uuid}` is a single blob signed by one
 author, so an agent editing the user's card is not withheld — it is impossible, the
@@ -177,9 +178,36 @@ stay distinguishable for the same reason.
 path re-reads it first — and a read this peer cannot verify or open throws rather than
 yielding an empty list, because "no cards" followed by a publish is how you erase them all.
 
-Photos travel as content-addressed blobs. This peer carries their pointers through a
-re-publish untouched (losing them would erase the author's photos) and reports that a
-photo *exists*; reading the bytes needs the app's `ImageCipher` format and is `lcm-gll`.
+## Card photos (`lcm-gll`)
+
+Photos travel as content-addressed blobs: a card carries a `BlobPointer` — the SHA-256 of
+the *ciphertext*, plus the base64 AES key — and the bytes sit in the server's blob store
+in the app's `ImageCipher` format (`TIC1` magic, IV length, IV, AES/GCM ciphertext and
+tag). `get_card_photo` takes a card id and a slot (`front`, `back`, `logo`), fetches the
+blob, checks the bytes really are at the address the card named, opens them, sniffs the
+media type from the bytes themselves, and returns MCP **image** content. `src/images/`
+is the port; it has only the open half, because this peer has no camera and carries an
+author's pointers through a re-publish verbatim rather than re-encrypting anything.
+
+This grants nothing new: the key rides inside the card snapshot, so a photo is readable
+exactly when the card naming it is.
+
+The format is pinned in `test/imageCipher.test.ts` against blobs produced by a **JVM**
+running the app's own `AES/GCM/NoPadding` — a port whose only test is itself agrees with
+itself and with nothing else.
+
+The absences are results, not errors, and they stay distinct: `no_photo` (with the lc-mr9
+tombstone distinguishing "the author removed it" from "the author never spoke for this
+slot"), `not_stored` (the card is published, the blob is not up yet — an ordinary minute
+in a healthy account), and `too_large`. Bytes that are *not* at the address requested, or
+that the card's own key will not open, throw instead: an integrity failure must not reach
+a user as "you have no photo".
+
+The size ceiling defaults to 2 MiB — the backend's own per-blob limit
+(`BlobConfig.DEFAULT_MAX_BYTES`), so no photo a phone was allowed to upload is refused as
+"too large", which a user would read as damage to their own data. A host that must budget
+its context lowers it with `TOLAR_MCP_MAX_PHOTO_BYTES`, and the refusal names that
+variable.
 
 ## The shopping-list tools (`lcm-a5e`)
 
@@ -263,5 +291,5 @@ in the Android repo at `docs/PRD-agent-connection.md` (§4, §6, §7).
 - `lcm-ffs` — card read + agent-owned card write tools (from lc-6du) ✅
 - `lcm-a5e` — shopping-list write tools with stamp discipline (from lc-bmb) ✅
 - `lcm-bgp` — shared merge test vectors across app and MCP (from lc-0sg)
-- `lcm-gll` — read card photo bytes, which needs the `ImageCipher` port
+- `lcm-gll` — read card photo bytes (`ImageCipher` port) ✅
 - `lcm-co0` — decline/dismiss an inbound share request

@@ -24,6 +24,25 @@ export interface ToolDefinition {
   readonly run: (args: Record<string, unknown>) => Promise<unknown>;
 }
 
+/**
+ * A tool result that is **not** JSON text: the content blocks to return verbatim.
+ *
+ * Almost every tool here answers with a value the server serializes as JSON, which is
+ * the right shape for facts about cards and lists. A photo is not a fact about a card;
+ * it is bytes, and MCP has a content type for exactly that. Returning a class the
+ * server recognises — rather than sniffing a plain object for a `content` key — keeps
+ * "these are content blocks" impossible to say by accident, and impossible to trigger
+ * from a card whose notes happen to be shaped like one.
+ */
+export class ToolContent {
+  constructor(readonly blocks: readonly ToolContentBlock[]) {}
+}
+
+/** The content blocks a tool may return directly. */
+export type ToolContentBlock =
+  | { readonly type: 'text'; readonly text: string }
+  | { readonly type: 'image'; readonly data: string; readonly mimeType: string };
+
 export interface ToolAnnotations {
   readonly readOnlyHint?: boolean;
   readonly destructiveHint?: boolean;

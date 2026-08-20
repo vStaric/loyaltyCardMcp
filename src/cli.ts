@@ -41,6 +41,9 @@ Environment:
   TOLAR_API_URL     Base URL of the Tolar REST API (required for everything but status).
   TOLAR_AGENT_NAME  Name offered in the invite (default "AI agent").
   TOLAR_MCP_HOME    Config directory (default $XDG_CONFIG_HOME/tolar-mcp).
+  TOLAR_MCP_MAX_PHOTO_BYTES
+                    Largest card photo get_card_photo will return (default 2 MiB, the
+                    backend's own per-blob ceiling).
 `;
 
 async function main(argv: string[]): Promise<number> {
