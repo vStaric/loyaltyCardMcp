@@ -4,6 +4,7 @@
   "about": "Vectors for the shared shopping list's merge (ShoppingMerge.kt / src/shopping/merge.ts). See README.md in this directory for the format.",
   "uuids": {
     "A": "aaaaaaaa-0000-4000-8000-0000000000aa",
+    "C": "cccccccc-0000-4000-8000-0000000000cc",
     "F": "ffffffff-0000-4000-8000-0000000000ff"
   },
   "vectors": [
@@ -486,11 +487,42 @@
       }
     },
     {
-      "name": "one-slot-two-authors-seen-from-the-lower-uuid",
+      "name": "shared-slots-three-authors-seen-from-the-lowest-uuid",
       "bug": null,
-      "why": "Each author numbers their own rows densely from zero, so two authors who move a row at once land different ids on the same sortOrder. The id settles it. Paired with the next vector, which merges the SAME slices from the other device: the two must produce the same order, or the shared list is not shared. The slices are handed over with the LATER-sorting id first, so slice iteration order and the expected order disagree: an implementation that leaves the loser of a slot collision wherever iteration happened to put it fails here.",
+      "why": "Each author numbers their own rows densely from zero, so authors who move a row at the same moment land different ids on the same sortOrder. The id settles it — and it has to settle it identically on every device, so this vector and the two that follow merge the SAME three slices from each seat in turn and expect byte-for-byte the same order. Two slots are shared here, three rows each, and the slices are handed over so that BOTH slots arrive in the exact REVERSE of the order expected back: an implementation that leaves the losers of a slot collision wherever its per-id map happened to iterate returns this list backwards, twice. The arrangement is the vector rather than decoration. An earlier version put two rows on one slot, and a no-tiebreak implementation passed it anyway (lc-3of) — two rows have exactly one wrong permutation, so a per-id map that iterates in hash order rather than insertion order can land on the right one by luck. Three rows on each of two slots leaves 35 of 36 orderings wrong.",
       "localUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
       "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-peas",
+                "sectionId": "s-list",
+                "name": "Peas",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              },
+              {
+                "id": "i-tofu",
+                "sectionId": "s-list",
+                "name": "Tofu",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
+              }
+            ]
+          }
+        },
         {
           "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
           "displayName": "Ada",
@@ -506,18 +538,27 @@
             ],
             "items": [
               {
-                "id": "i-zucchini",
+                "id": "i-garlic",
                 "sectionId": "s-list",
-                "name": "Zucchini",
+                "name": "Garlic",
                 "addedDate": 1000,
                 "layoutChangedAt": 9000,
                 "sortOrder": 2
+              },
+              {
+                "id": "i-lemons",
+                "sectionId": "s-list",
+                "name": "Lemons",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
               }
             ]
           }
         },
         {
-          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "authorUuid": "cccccccc-0000-4000-8000-0000000000cc",
+          "displayName": "Cy",
           "snapshot": {
             "sections": [
               {
@@ -529,12 +570,20 @@
             ],
             "items": [
               {
-                "id": "i-apple",
+                "id": "i-apricot",
                 "sectionId": "s-list",
-                "name": "Apple",
+                "name": "Apricots",
                 "addedDate": 1000,
                 "layoutChangedAt": 9000,
                 "sortOrder": 2
+              },
+              {
+                "id": "i-basil",
+                "sectionId": "s-list",
+                "name": "Basil",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
               }
             ]
           }
@@ -549,18 +598,22 @@
             "sortOrder": 0,
             "items": [
               {
-                "id": "i-apple",
+                "id": "i-apricot",
                 "sectionId": "s-list",
-                "name": "Apple",
+                "name": "Apricots",
                 "addedDate": 1000,
                 "layoutChangedAt": 9000,
                 "sortOrder": 2,
-                "provenance": "own"
+                "provenance": {
+                  "authorUuid": "cccccccc-0000-4000-8000-0000000000cc",
+                  "displayName": "Cy",
+                  "connectionKind": "person"
+                }
               },
               {
-                "id": "i-zucchini",
+                "id": "i-garlic",
                 "sectionId": "s-list",
-                "name": "Zucchini",
+                "name": "Garlic",
                 "addedDate": 1000,
                 "layoutChangedAt": 9000,
                 "sortOrder": 2,
@@ -569,42 +622,63 @@
                   "displayName": "Ada",
                   "connectionKind": "agent"
                 }
+              },
+              {
+                "id": "i-peas",
+                "sectionId": "s-list",
+                "name": "Peas",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": "own"
+              },
+              {
+                "id": "i-basil",
+                "sectionId": "s-list",
+                "name": "Basil",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3,
+                "provenance": {
+                  "authorUuid": "cccccccc-0000-4000-8000-0000000000cc",
+                  "displayName": "Cy",
+                  "connectionKind": "person"
+                }
+              },
+              {
+                "id": "i-lemons",
+                "sectionId": "s-list",
+                "name": "Lemons",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3,
+                "provenance": {
+                  "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+                  "displayName": "Ada",
+                  "connectionKind": "agent"
+                }
+              },
+              {
+                "id": "i-tofu",
+                "sectionId": "s-list",
+                "name": "Tofu",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3,
+                "provenance": "own"
               }
             ]
           }
         ],
-        "observedByPeers": ["i-zucchini"]
+        "observedByPeers": ["i-apricot", "i-basil", "i-garlic", "i-lemons"]
       }
     },
     {
-      "name": "one-slot-two-authors-seen-from-the-higher-uuid",
+      "name": "shared-slots-three-authors-seen-from-the-middle-uuid",
       "bug": null,
-      "why": "The previous vector's slices merged from the other device. Only the provenance and observedByPeers change seats; the ORDER must be byte-for-byte the same. An implementation that left the loser of a slot collision wherever slice iteration happened to put it passes one of these two and fails the other. The slices are handed over with the LATER-sorting id first, so slice iteration order and the expected order disagree: an implementation that leaves the loser of a slot collision wherever iteration happened to put it fails here.",
-      "localUuid": "ffffffff-0000-4000-8000-0000000000ff",
+      "why": "The first vector's slices merged on the second device. Only the provenance and observedByPeers change seats; the ORDER must be identical, because a shared list two devices draw differently is not shared. Both slots still arrive in the exact reverse of the order expected back, so an implementation that leaves a slot collision where iteration put it fails here as well — and one that orders by author rather than by id fails too, since the ids and the uuids that published them do not agree.",
+      "localUuid": "cccccccc-0000-4000-8000-0000000000cc",
       "slices": [
-        {
-          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
-          "snapshot": {
-            "sections": [
-              {
-                "id": "s-list",
-                "title": "List",
-                "createdAt": 1000,
-                "sortOrder": 0
-              }
-            ],
-            "items": [
-              {
-                "id": "i-zucchini",
-                "sectionId": "s-list",
-                "name": "Zucchini",
-                "addedDate": 1000,
-                "layoutChangedAt": 9000,
-                "sortOrder": 2
-              }
-            ]
-          }
-        },
         {
           "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
           "displayName": "Bo",
@@ -619,12 +693,84 @@
             ],
             "items": [
               {
-                "id": "i-apple",
+                "id": "i-peas",
                 "sectionId": "s-list",
-                "name": "Apple",
+                "name": "Peas",
                 "addedDate": 1000,
                 "layoutChangedAt": 9000,
                 "sortOrder": 2
+              },
+              {
+                "id": "i-tofu",
+                "sectionId": "s-list",
+                "name": "Tofu",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "displayName": "Ada",
+          "connectionKind": "agent",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-garlic",
+                "sectionId": "s-list",
+                "name": "Garlic",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              },
+              {
+                "id": "i-lemons",
+                "sectionId": "s-list",
+                "name": "Lemons",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "cccccccc-0000-4000-8000-0000000000cc",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-apricot",
+                "sectionId": "s-list",
+                "name": "Apricots",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              },
+              {
+                "id": "i-basil",
+                "sectionId": "s-list",
+                "name": "Basil",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
               }
             ]
           }
@@ -639,9 +785,31 @@
             "sortOrder": 0,
             "items": [
               {
-                "id": "i-apple",
+                "id": "i-apricot",
                 "sectionId": "s-list",
-                "name": "Apple",
+                "name": "Apricots",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": "own"
+              },
+              {
+                "id": "i-garlic",
+                "sectionId": "s-list",
+                "name": "Garlic",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": {
+                  "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+                  "displayName": "Ada",
+                  "connectionKind": "agent"
+                }
+              },
+              {
+                "id": "i-peas",
+                "sectionId": "s-list",
+                "name": "Peas",
                 "addedDate": 1000,
                 "layoutChangedAt": 9000,
                 "sortOrder": 2,
@@ -652,18 +820,230 @@
                 }
               },
               {
-                "id": "i-zucchini",
+                "id": "i-basil",
                 "sectionId": "s-list",
-                "name": "Zucchini",
+                "name": "Basil",
                 "addedDate": 1000,
                 "layoutChangedAt": 9000,
-                "sortOrder": 2,
+                "sortOrder": 3,
                 "provenance": "own"
+              },
+              {
+                "id": "i-lemons",
+                "sectionId": "s-list",
+                "name": "Lemons",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3,
+                "provenance": {
+                  "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+                  "displayName": "Ada",
+                  "connectionKind": "agent"
+                }
+              },
+              {
+                "id": "i-tofu",
+                "sectionId": "s-list",
+                "name": "Tofu",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3,
+                "provenance": {
+                  "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+                  "displayName": "Bo",
+                  "connectionKind": "person"
+                }
               }
             ]
           }
         ],
-        "observedByPeers": ["i-apple"]
+        "observedByPeers": ["i-garlic", "i-lemons", "i-peas", "i-tofu"]
+      }
+    },
+    {
+      "name": "shared-slots-three-authors-seen-from-the-highest-uuid",
+      "bug": null,
+      "why": "The same slices again from the third and last seat, the highest uuid. Every author is now covered, so no seat can quietly draw a different list. An implementation that broke the slot tie on the local uuid — the seat, rather than the row — passes one of these three and fails the other two.",
+      "localUuid": "ffffffff-0000-4000-8000-0000000000ff",
+      "slices": [
+        {
+          "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+          "displayName": "Bo",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-peas",
+                "sectionId": "s-list",
+                "name": "Peas",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              },
+              {
+                "id": "i-tofu",
+                "sectionId": "s-list",
+                "name": "Tofu",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "ffffffff-0000-4000-8000-0000000000ff",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-garlic",
+                "sectionId": "s-list",
+                "name": "Garlic",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              },
+              {
+                "id": "i-lemons",
+                "sectionId": "s-list",
+                "name": "Lemons",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
+              }
+            ]
+          }
+        },
+        {
+          "authorUuid": "cccccccc-0000-4000-8000-0000000000cc",
+          "displayName": "Cy",
+          "snapshot": {
+            "sections": [
+              {
+                "id": "s-list",
+                "title": "List",
+                "createdAt": 1000,
+                "sortOrder": 0
+              }
+            ],
+            "items": [
+              {
+                "id": "i-apricot",
+                "sectionId": "s-list",
+                "name": "Apricots",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2
+              },
+              {
+                "id": "i-basil",
+                "sectionId": "s-list",
+                "name": "Basil",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3
+              }
+            ]
+          }
+        }
+      ],
+      "expected": {
+        "sections": [
+          {
+            "id": "s-list",
+            "title": "List",
+            "createdAt": 1000,
+            "sortOrder": 0,
+            "items": [
+              {
+                "id": "i-apricot",
+                "sectionId": "s-list",
+                "name": "Apricots",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": {
+                  "authorUuid": "cccccccc-0000-4000-8000-0000000000cc",
+                  "displayName": "Cy",
+                  "connectionKind": "person"
+                }
+              },
+              {
+                "id": "i-garlic",
+                "sectionId": "s-list",
+                "name": "Garlic",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": "own"
+              },
+              {
+                "id": "i-peas",
+                "sectionId": "s-list",
+                "name": "Peas",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 2,
+                "provenance": {
+                  "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+                  "displayName": "Bo",
+                  "connectionKind": "person"
+                }
+              },
+              {
+                "id": "i-basil",
+                "sectionId": "s-list",
+                "name": "Basil",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3,
+                "provenance": {
+                  "authorUuid": "cccccccc-0000-4000-8000-0000000000cc",
+                  "displayName": "Cy",
+                  "connectionKind": "person"
+                }
+              },
+              {
+                "id": "i-lemons",
+                "sectionId": "s-list",
+                "name": "Lemons",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3,
+                "provenance": "own"
+              },
+              {
+                "id": "i-tofu",
+                "sectionId": "s-list",
+                "name": "Tofu",
+                "addedDate": 1000,
+                "layoutChangedAt": 9000,
+                "sortOrder": 3,
+                "provenance": {
+                  "authorUuid": "aaaaaaaa-0000-4000-8000-0000000000aa",
+                  "displayName": "Bo",
+                  "connectionKind": "person"
+                }
+              }
+            ]
+          }
+        ],
+        "observedByPeers": ["i-apricot", "i-basil", "i-peas", "i-tofu"]
       }
     },
     {

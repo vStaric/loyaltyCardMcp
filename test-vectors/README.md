@@ -5,7 +5,7 @@ files neither implementation owns.
 
 | File | Seam | |
 |---|---|---|
-| [`shopping-merge.json`](shopping-merge.json) | `ShoppingMerge` | 11 vectors |
+| [`shopping-merge.json`](shopping-merge.json) | `ShoppingMerge` | 12 vectors |
 | [`card-merge.json`](card-merge.json) | `CardMerge` | 5 vectors |
 | [`envelope-crypto.json`](envelope-crypto.json) | `EnvelopeCrypto` + `IdentityDeriver` | 3 identities, 24 vectors |
 
@@ -94,7 +94,7 @@ says `own` is saying "this agent put this here", which is the attribution
 {
   "v": 1,                       // vector-file schema; harnesses reject anything else
   "kind": "shopping-merge",
-  "uuids": { "A": "aaaa…", "F": "ffff…" },   // documentation; A sorts below F
+  "uuids": { "A": "aaaa…", "C": "cccc…", "F": "ffff…" },  // documentation; A < C < F
   "vectors": [
     {
       "name": "…",              // unique, kebab-case; the test's name on both sides
@@ -139,8 +139,9 @@ Two things about `expected` that are easy to read the wrong way:
 | `a-move-arrives-without-the-movers-stale-check-state` | `lc-c3j` — placement is its own comparator, and takes `sortOrder` + `indentLevel` and nothing else |
 | `a-section-rename-wins-without-carrying-the-renamers-slot` | `lc-l85` — the title is its own comparator, and does not drag the renamer's `sortOrder` |
 | `a-tombstone-beats-a-live-observation` | tombstone-wins, from the *lower* uuid so it is the stamp that did it |
-| `one-slot-two-authors-seen-from-the-lower-uuid` | two authors landing different ids on one `sortOrder`; the id settles it |
-| `one-slot-two-authors-seen-from-the-higher-uuid` | the same slices merged on the other device — the order must be identical |
+| `shared-slots-three-authors-seen-from-the-lowest-uuid` | three authors landing different ids on each of two `sortOrder`s; the id settles it, and both slots arrive in the exact reverse of the expected order |
+| `shared-slots-three-authors-seen-from-the-middle-uuid` | the same slices merged on the second device — the order must be identical, and the ids do not agree with the uuids that published them |
+| `shared-slots-three-authors-seen-from-the-highest-uuid` | the same again from the third seat, so no device can quietly draw a different list |
 | `an-item-whose-section-nobody-holds-is-dropped` | orphans are dropped, but still counted in `observedByPeers` |
 | `a-section-removal-is-unioned-and-dated-from-its-first-report` | `lc-17q` — `deletedAt` is unioned not raced, kept at the earliest report, and waits for the section to empty |
 | `a-slice-with-no-state-stamp-still-compares-on-its-other-dates` | a peer on a build older than `stateChangedAt` still compares the way it always did |
@@ -350,9 +351,16 @@ any other vector here.
 3. If it encodes a bug that has a bead, tag it. The coverage guard in
    `test/mergeVectors.test.ts` asserts the tagged set is still whole, so dropping one is
    possible but has to be deliberate — you edit the guard in the same commit.
-4. Prefer a vector that **bites**: mutate the implementation and watch it fail. Every
-   vector here was checked that way. Two that did not bite on the first attempt are the
-   reason the one-slot vectors hand their slices over with the later-sorting id first.
+4. Prefer a vector that **bites**: mutate the implementation and watch it fail — on
+   **both** implementations, because a vector can be unfalsifiable on one of them and
+   green on the other, which is drift wearing a passing tick. `lc-3of` is that case. The
+   earlier one-slot vectors put two rows on a single `sortOrder` and handed them over
+   with the later-sorting id first, which bites here, where the per-id map iterates in
+   insertion order — but the app accumulates into a `HashMap`, whose hash order happened
+   to equal the expected order for that one pair of ids, so both vectors passed there
+   with no tiebreak at all. Two rows leave exactly one wrong permutation for luck to
+   find. Their replacements share **two** slots between **three** authors and arrive in
+   the exact reverse of the expected order in both, which leaves 35 of 36 wrong.
 
 ## Adding or changing a crypto vector
 

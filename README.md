@@ -116,7 +116,7 @@ against: they are behaviour, and behaviour drifts quietly. So the rules live in
 [`test-vectors/`](test-vectors/README.md) as language-neutral JSON — input slices plus
 a `localUuid`, and the exact merged output — and **both** implementations run them.
 
-Sixteen vectors, one per rule, including one for each merge bug the app already shipped
+Seventeen vectors, one per rule, including one for each merge bug the app already shipped
 and fixed:
 
 | | |
@@ -133,9 +133,10 @@ harness is `test/mergeVectors.test.ts`; it decodes, merges, compares, and assert
 nothing of its own — anything it asserted alone would be a rule the app is not held to,
 which is the drift the vectors exist to prevent.
 
-Every vector was checked by mutating the implementation and watching it fail. Two did
-not bite on the first attempt, which is why the one-slot vectors hand their slices over
-with the later-sorting id first.
+Every vector was checked by mutating the implementation and watching it fail — on both
+implementations, because a vector that cannot fail on one side has quietly become a
+single-side unit test (`lc-3of`). That is why the shared-slot vectors put three rows on
+each of two slots and hand them over in the exact reverse of the order expected back.
 
 ### Where the agent's keys live, and what protects them
 
