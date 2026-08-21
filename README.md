@@ -170,6 +170,7 @@ export TOLAR_API_URL=https://your-tolar-backend.example
 npx tolar-mcp pair              # publishes the user row, prints QR + code + safety number
 npx tolar-mcp connections       # who this agent shares with, and who is asking
 npx tolar-mcp accept 7          # accept a request, after comparing its safety number
+npx tolar-mcp decline 7         # refuse one: hide it here, and tell the requester
 npx tolar-mcp revoke <uuid>     # stop sharing, and rotate the content key away
 npx tolar-mcp serve             # the MCP server, on stdio — what a host launches
 npx tolar-mcp status            # account uuid and config location
@@ -305,6 +306,27 @@ one the app shows.
 What the *user* shares back is set on their accept screen, not here. This agent learns it
 only by whether their envelope carries a key it can open.
 
+### Saying no (`lcm-co0`)
+
+`decline <id>` is the other answer, and it has two halves that fail differently.
+
+The dismissal is **local**: the backend has no delete route for a `requestShare`, so the
+id joins `handledRequestIds` and the inbox stops offering it. That half cannot fail, and
+it happens first.
+
+Recording the refusal where the requester can read it is a `PUT
+/api/shareResponse/{id}` — a tiny decision envelope sealed to them alone and signed over
+the request id, the port of `sync/sharing/ShareResponse.kt`. Without it their app sits at
+"waiting" forever for an invite that was in fact refused, because an accept is the only
+answer a grant document can imply. It is **best-effort**: a decision that does not reach
+the server leaves them seeing silence, which is a true statement about what they know, so
+the CLI reports that outcome rather than a delivered "no". Silence is never a decline —
+nothing here, and nothing in the app, ever collapses the two.
+
+Declining an account this agent already shares with is refused: it would tell them "no"
+while the grant document keeps saying yes. Stopping the sharing is `revoke`, and a
+separate decision.
+
 ## Beads
 
 Work is tracked in the `loyaltyCardMcp` Gas Town rig (prefix `lcm-`). Design lives
@@ -315,4 +337,4 @@ in the Android repo at `docs/PRD-agent-connection.md` (§4, §6, §7).
 - `lcm-a5e` — shopping-list write tools with stamp discipline (from lc-bmb) ✅
 - `lcm-bgp` — shared merge test vectors across app and MCP (from lc-0sg)
 - `lcm-gll` — read card photo bytes (`ImageCipher` port) ✅
-- `lcm-co0` — decline/dismiss an inbound share request
+- `lcm-co0` — decline/dismiss an inbound share request ✅

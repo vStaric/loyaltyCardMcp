@@ -16,6 +16,7 @@ import {
   type ResourceScope,
 } from './roster.js';
 import type { RosterStore } from './rosterStore.js';
+import { sealShareResponse } from './shareResponse.js';
 
 /** The envelope `resourceType` the roster grant document is signed under. */
 const SHARE_TYPE = 'share';
@@ -122,6 +123,68 @@ export class ConnectionManager {
   }
 
   /**
+   * Decline request `requestId`: stop offering it here, and record the refusal where
+   * the requester can read it.
+   *
+   * The backend has no delete route for a `requestShare` — the list is append-only —
+   * so "dismissed" is a local fact: the id joins `handledRequestIds` and {@link
+   * pending} stops showing it. That half is the whole of what this agent needs, and it
+   * happens first, because it cannot fail.
+   *
+   * The second half is a courtesy to the other side, and it is **best-effort by
+   * design**. A decision envelope that does not reach the server leaves them seeing
+   * "no answer yet", which is a true statement about what they know; nothing here is
+   * shared with them either way. The result says which of the two happened rather than
+   * reporting a clean refusal we did not actually deliver.
+   *
+   * Like {@link accept} this reads the **raw** inbox, not the filtered view: naming an
+   * id is a deliberate act, and a request hidden by some display rule must still be
+   * answerable. Unlike accept it pins nothing and grants nothing, so a requester whose
+   * keys do not match one we already hold is not a mismatch to refuse — they are
+   * simply being told no.
+   */
+  async decline(requestId: number): Promise<DeclineResult> {
+    const view = await this.api.getRequestShare(this.identity.uuid);
+    const raw = view.requests.find((r) => r.id === requestId);
+    if (!raw) {
+      throw new NoSuchRequestError(requestId);
+    }
+    const request = toPendingRequest(raw);
+    if (request.requesterUuid === this.identity.uuid) {
+      throw new SelfConnectError();
+    }
+    const current = this.roster.load();
+    if (current.connections.some((c) => c.uuid === request.requesterUuid)) {
+      throw new ConnectedRequesterError(request.requesterUuid);
+    }
+    // An id already marked handled was actioned before, so this is a repeat and there
+    // is nothing new to record. The decision table keeps the first answer and refuses a
+    // differing one, and a fresh envelope is never byte-identical to a stored one, so
+    // the 409 a second PUT earns would be reported as a failure that says nothing about
+    // what the requester can actually see.
+    if (current.handledRequestIds.includes(requestId)) {
+      return { request, notified: 'skipped' };
+    }
+    this.roster.update((r) => withHandledRequest(r, requestId));
+    return { request, notified: (await this.tellRequester(request)) ? 'sent' : 'failed' };
+  }
+
+  /**
+   * PUT the sealed decline for `request`. Never throws: see {@link decline}.
+   */
+  private async tellRequester(request: PendingRequest): Promise<boolean> {
+    try {
+      const encKey = new Uint8Array(Buffer.from(request.encKey, 'base64'));
+      const recipient = { uuid: request.requesterUuid, x25519PublicKey: encKey };
+      const envelope = sealShareResponse(this.crypto, this.identity, request.id, false, recipient);
+      await this.api.putShareResponse(request.id, envelope);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
    * Stop sharing with `uuid`, and rotate this agent's content keys away from them.
    *
    * What revocation does **not** do is take back what they already read. For a peer
@@ -220,6 +283,20 @@ export interface AcceptOptions {
   readonly kind?: ConnectionKind;
 }
 
+/** What a {@link ConnectionManager.decline} did, including the half that can fail. */
+export interface DeclineResult {
+  /** The request that was refused, as the operator saw it. */
+  readonly request: PendingRequest;
+  /**
+   * Whether the requester can now read the refusal:
+   * - `sent` — the decision envelope is stored; their app will say "declined".
+   * - `failed` — we could not record it, so their app still shows an unanswered invite.
+   * - `skipped` — the request was actioned before, so nothing new was written and
+   *   whatever the requester could already see is unchanged.
+   */
+  readonly notified: 'sent' | 'failed' | 'skipped';
+}
+
 /** This agent's own uuid asked to connect to itself. Never a real request. */
 export class SelfConnectError extends Error {
   constructor() {
@@ -233,6 +310,21 @@ export class NoSuchRequestError extends Error {
   constructor(readonly requestId: number) {
     super(`no pending share request with id ${requestId}`);
     this.name = 'NoSuchRequestError';
+  }
+}
+
+/**
+ * A request from an account this agent already shares with. Declining it would tell
+ * them "no" while the grant document keeps saying yes — the one answer that would be
+ * false — so stopping the sharing is a separate, deliberate act.
+ */
+export class ConnectedRequesterError extends Error {
+  constructor(readonly uuid: string) {
+    super(
+      `already sharing with ${uuid}, so declining their request would claim something ` +
+        `untrue. Stop sharing first with \`tolar-mcp revoke ${uuid}\`.`,
+    );
+    this.name = 'ConnectedRequesterError';
   }
 }
 

@@ -22,6 +22,7 @@ Usage:
   tolar-mcp pair [--api-url URL] [--name NAME] [--config-dir DIR] [--no-qr]
   tolar-mcp connections [--api-url URL] [--config-dir DIR]
   tolar-mcp accept <request-id> [--scopes cards,shopping] [--kind agent|person]
+  tolar-mcp decline <request-id> [--api-url URL] [--config-dir DIR]
   tolar-mcp revoke <uuid> [--api-url URL] [--config-dir DIR]
   tolar-mcp status [--config-dir DIR]
   tolar-mcp export-phrase [--config-dir DIR]
@@ -32,6 +33,7 @@ Commands:
   pair            Publish this agent's user row and print the invite for the app to scan.
   connections     Show who this agent shares with, and any request waiting for an answer.
   accept          Accept an inbound share request, after comparing its safety number.
+  decline         Refuse an inbound share request: hide it here, and record the refusal.
   revoke          Stop sharing with an account and rotate this agent's keys away from it.
   status          Show this agent's account uuid and where its config lives.
   export-phrase   Print the BIP-39 recovery phrase — the complete backup of this identity.
@@ -64,6 +66,8 @@ async function main(argv: string[]): Promise<number> {
       return connections(overrides);
     case 'accept':
       return accept(overrides, positional[0], flags);
+    case 'decline':
+      return decline(overrides, positional[0]);
     case 'revoke':
       return revoke(overrides, positional[0]);
     case 'status':
@@ -175,7 +179,8 @@ async function connections(overrides: Partial<PeerConfig>): Promise<number> {
     '\nCompare the safety number against the one the app shows for this account before\n' +
       'accepting. Everything else about a request reached us through the server, so that\n' +
       'comparison is the only step that would catch a substituted key.\n' +
-      '\nAccept with: tolar-mcp accept <id>\n',
+      '\nAccept with:  tolar-mcp accept <id>\n' +
+      'Decline with: tolar-mcp decline <id>   (hides it here, and tells them)\n',
   );
   return 0;
 }
@@ -206,6 +211,50 @@ async function accept(
       'reporting an empty list.\n',
   );
   return 0;
+}
+
+/**
+ * Decline an inbound share request — the answer the inbox had no way to give.
+ *
+ * Two things happen, and the output separates them because only one can fail: the
+ * request stops being offered here (local, certain), and the refusal is recorded where
+ * the requester can read it (a PUT, best-effort). Silence is not a decline — an invite
+ * we never answer sits at "waiting" in their app on purpose — so a decision that did
+ * not reach the server is reported as exactly that rather than as a delivered "no".
+ */
+async function decline(
+  overrides: Partial<PeerConfig>,
+  requestId: string | undefined,
+): Promise<number> {
+  const id = Number(requestId);
+  if (!Number.isSafeInteger(id)) {
+    process.stderr.write('decline needs the request id from `tolar-mcp connections`\n');
+    return 1;
+  }
+  const agent = await openAgent(overrides);
+  const { request, notified } = await agent.connections.decline(id);
+  const who = request.displayName ?? request.requesterUuid;
+  process.stdout.write(
+    `Declined [${request.id}] ${who}\n` +
+      'This agent shares nothing with them, and the request stops appearing here.\n',
+  );
+  if (notified === 'sent') {
+    process.stdout.write('Their app will show this invite as declined rather than unanswered.\n');
+    return 0;
+  }
+  if (notified === 'skipped') {
+    process.stdout.write(
+      'This request had already been actioned here, so nothing new was recorded for\n' +
+        'them — what their app shows is unchanged.\n',
+    );
+    return 0;
+  }
+  process.stderr.write(
+    '\nCould not record the refusal for them, so their app still shows this invite as\n' +
+      'unanswered. That is a true statement about what they know, and nothing here is\n' +
+      'shared with them either way. Re-running `decline` will not retry it.\n',
+  );
+  return 1;
 }
 
 /** Stop sharing with an account, and say plainly what that does not undo. */

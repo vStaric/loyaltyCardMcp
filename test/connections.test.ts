@@ -6,12 +6,14 @@ import { EnvelopeCrypto } from '../src/crypto/envelopeCrypto.js';
 import type { Identity } from '../src/crypto/identity.js';
 import { initSodium, type SodiumCrypto } from '../src/crypto/sodium.js';
 import {
+  ConnectedRequesterError,
   ConnectionKeyMismatchError,
   ConnectionManager,
   NoSuchRequestError,
   SelfConnectError,
   encodeShareDoc,
 } from '../src/sharing/connections.js';
+import { SHARE_RESPONSE_TYPE } from '../src/sharing/shareResponse.js';
 import { RosterStore } from '../src/sharing/rosterStore.js';
 import { SyncStateStore } from '../src/sync/syncState.js';
 import type { ShareRequestViewDto } from '../src/sync/wire.js';
@@ -194,6 +196,100 @@ describe('accept', () => {
     ];
 
     await expect(manager.accept(2)).rejects.toBeInstanceOf(ConnectionKeyMismatchError);
+  });
+});
+
+describe('decline', () => {
+  /** Open the stored decision as its only reader — what the requester's app does. */
+  function decisionFor(backend: FakeBackend, id: number): { requestId: number; accepted: boolean } {
+    const envelope = backend.shareResponses.get(id)!;
+    expect(crypto.verify(SHARE_RESPONSE_TYPE, String(id), envelope, agent.signPublicKey)).toBe(
+      true,
+    );
+    const plaintext = crypto.decrypt(envelope, user.uuid, user.encryptionKeyPair);
+    return JSON.parse(Buffer.from(plaintext).toString('utf8')) as {
+      requestId: number;
+      accepted: boolean;
+    };
+  }
+
+  it('stops offering the request and records the refusal for the requester', async () => {
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(user, 1)];
+
+    const result = await manager.decline(1);
+
+    expect(result.notified).toBe('sent');
+    expect(result.request.requesterUuid).toBe(user.uuid);
+    expect(await manager.pending()).toEqual([]);
+    expect(decisionFor(backend, 1)).toEqual({ requestId: 1, accepted: false });
+  });
+
+  it('shares nothing: no connection, no grant document', async () => {
+    const { backend, manager, republished } = harness();
+    backend.requests = [requestFrom(user, 1)];
+
+    await manager.decline(1);
+
+    expect(manager.connections()).toEqual([]);
+    expect(backend.shares.get(agent.uuid)).toBeUndefined();
+    expect(republished).toEqual([]);
+  });
+
+  it('seals the decision to the requester alone — not even this agent can read it', async () => {
+    // It says nothing we need back, and the server keeps it forever; one reader is the
+    // whole audience.
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(user, 1)];
+    await manager.decline(1);
+    expect(Object.keys(backend.shareResponses.get(1)!.keys)).toEqual([user.uuid]);
+  });
+
+  it('keeps the local dismissal when the decision cannot be recorded', async () => {
+    // The half that cannot fail must not be undone by the half that can — and the
+    // caller is told, because an undelivered refusal leaves them seeing silence.
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(user, 1)];
+    backend.unreachableShareResponses.add(1);
+
+    expect((await manager.decline(1)).notified).toBe('failed');
+    expect(await manager.pending()).toEqual([]);
+    expect(backend.shareResponses.has(1)).toBe(false);
+  });
+
+  it('does not re-answer a request it already actioned', async () => {
+    // The decision table keeps the first answer; a second, freshly-sealed envelope is a
+    // different one, so re-declining would earn a 409 and report a failure that says
+    // nothing about what the requester can see.
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(user, 1)];
+    await manager.decline(1);
+    const stored = backend.shareResponses.get(1);
+
+    expect((await manager.decline(1)).notified).toBe('skipped');
+    expect(backend.shareResponses.get(1)).toBe(stored);
+  });
+
+  it('refuses to decline an account this agent already shares with', async () => {
+    // Declining would tell them "no" while the grant document keeps saying yes.
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(user, 1), requestFrom(user, 2)];
+    await manager.accept(1);
+
+    await expect(manager.decline(2)).rejects.toBeInstanceOf(ConnectedRequesterError);
+    expect(manager.connections()).toHaveLength(1);
+    expect(backend.shareResponses.size).toBe(0);
+  });
+
+  it('refuses an id the inbox does not hold', async () => {
+    const { manager } = harness();
+    await expect(manager.decline(99)).rejects.toBeInstanceOf(NoSuchRequestError);
+  });
+
+  it('refuses a request from this agent itself', async () => {
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(agent, 1)];
+    await expect(manager.decline(1)).rejects.toBeInstanceOf(SelfConnectError);
   });
 });
 

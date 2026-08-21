@@ -50,6 +50,10 @@ export class FakeBackend implements TolarApi {
   readonly blobs = new Map<string, Uint8Array>();
   /** Blobs whose fetch fails, to exercise the unreachable path. */
   readonly unreachableBlobs = new Set<string>();
+  /** The append-only decision table: one stored answer per share request id. */
+  readonly shareResponses = new Map<number, Envelope>();
+  /** Request ids whose decision write fails, to exercise the best-effort decline path. */
+  readonly unreachableShareResponses = new Set<number>();
 
   async getUser(uuid: string): Promise<UserProfileDto | null> {
     return this.users.get(uuid) ?? null;
@@ -85,6 +89,20 @@ export class FakeBackend implements TolarApi {
 
   async getRequestShare(): Promise<ShareRequestsViewDto> {
     return { originUuid: '', requests: this.requests };
+  }
+
+  /**
+   * Store the decision for `requestId`, append-only like the real table: the first
+   * answer stands, a byte-identical retry is accepted, and a differing one is a 409.
+   * The distinction matters to the decline path, which must not re-answer.
+   */
+  async putShareResponse(requestId: number, envelope: Envelope): Promise<number> {
+    if (this.unreachableShareResponses.has(requestId)) throw new Error('backend unavailable');
+    const stored = this.shareResponses.get(requestId);
+    if (stored && JSON.stringify(stored) !== JSON.stringify(envelope))
+      throw new StaleVersionError();
+    this.shareResponses.set(requestId, envelope);
+    return requestId;
   }
 
   async getShoppingList(listId: string): Promise<ShoppingListViewDto> {
@@ -127,9 +145,6 @@ export class FakeBackend implements TolarApi {
   // --- not exercised by either tool surface ------------------------------------
   async deleteUser(): Promise<void> {}
   async postRequestShare(): Promise<number> {
-    return 1;
-  }
-  async putShareResponse(): Promise<number> {
     return 1;
   }
   async getShareResponse(): Promise<ShareResponseViewDto | null> {
