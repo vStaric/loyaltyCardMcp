@@ -38,7 +38,7 @@ const CARDS_TYPE = 'cards';
  * second source of truth for the one resource whose whole contract is single-author.
  */
 export class CardService {
-  /** Serializes read-modify-write publishes; see {@link exclusive}. */
+  /** Serializes every operation on this blob, read or write; see {@link exclusive}. */
   private writes: Promise<unknown> = Promise.resolve();
 
   constructor(
@@ -63,6 +63,16 @@ export class CardService {
    * rather than "you did not give me these" — the one answer that would be a lie.
    */
   async view(): Promise<CardsView> {
+    return this.exclusive(() => this.readView());
+  }
+
+  /** One merged card by id, or `null` if no visible card carries it. */
+  async get(id: string): Promise<{ view: CardsView; card: MergedCard | null }> {
+    return this.exclusive(() => this.locate(id));
+  }
+
+  /** {@link view} without the queue — for callers already holding it. */
+  private async readView(): Promise<CardsView> {
     const own = await this.readOwn();
     const shared: SharedCards[] = [];
     const unreadable: UnreadableSource[] = [];
@@ -78,9 +88,9 @@ export class CardService {
     };
   }
 
-  /** One merged card by id, or `null` if no visible card carries it. */
-  async get(id: string): Promise<{ view: CardsView; card: MergedCard | null }> {
-    const view = await this.view();
+  /** {@link get} without the queue — for callers already holding it. */
+  private async locate(id: string): Promise<{ view: CardsView; card: MergedCard | null }> {
+    const view = await this.readView();
     return { view, card: view.cards.find((c) => c.card.id === id) ?? null };
   }
 
@@ -331,7 +341,7 @@ export class CardService {
    * telling them the truth, which is that this card is theirs and stays theirs.
    */
   private async notOursOrMissing(id: string): Promise<CardNotOursError | CardNotFoundError> {
-    const { card } = await this.get(id);
+    const { card } = await this.locate(id);
     if (card && card.provenance.kind === 'sharedBy') {
       return new CardNotOursError(id, card.provenance.authorUuid, card.provenance.displayName);
     }
@@ -339,13 +349,24 @@ export class CardService {
   }
 
   /**
-   * Run `body` after every write already queued.
+   * Run `body` after everything already queued — **reads included**.
+   *
+   * Two reasons, and the second one is the load-bearing one.
    *
    * Each write is a read-modify-write of one whole blob, so two of them in flight at
    * once would have the second overwrite the first with state read before it — and the
    * server's version check cannot catch that, because both writes are legitimately
-   * ours. MCP tool calls arrive concurrently, so this is a real case, not a theoretical
-   * one.
+   * ours.
+   *
+   * And a read that does not queue answers from before a write this same session has
+   * already reported as done (lcm-8wb). MCP tool calls do not arrive one at a time: a
+   * model that adds a card and reads the list back in one turn has both calls dispatched
+   * together, the GET beats the PUT to the server, and the answer is the account as it
+   * was — a genuine, non-refusal empty result that is false. That is the one input the
+   * empty-vs-refusal distinction in `mcp/server.ts` cannot defend against, because
+   * nothing distinguishes it from a real empty list; the agent then tells the user they
+   * have no cards moments after adding one. So the queue is the whole surface of this
+   * blob, not just its writes, and a read taken after a write in call order sees it.
    */
   private exclusive<T>(body: () => Promise<T>): Promise<T> {
     const run = this.writes.then(body, body);

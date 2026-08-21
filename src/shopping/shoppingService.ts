@@ -46,7 +46,7 @@ const SHOPPINGLIST_TYPE = 'shoppinglist';
  * empty: the server has nothing at that address, so there is nothing to destroy.
  */
 export class ShoppingService {
-  /** Serializes read-modify-write publishes; see {@link exclusive}. */
+  /** Serializes every operation on our slice, read or write; see {@link exclusive}. */
   private writes: Promise<unknown> = Promise.resolve();
 
   constructor(
@@ -76,6 +76,11 @@ export class ShoppingService {
    * than "you did not give me this".
    */
   async view(): Promise<ShoppingView> {
+    return this.exclusive(() => this.readView());
+  }
+
+  /** {@link view} without the queue — for callers already holding it. */
+  private async readView(): Promise<ShoppingView> {
     const own = await this.readOwn();
     const slices: AuthorSlice[] = [
       { authorUuid: this.identity.uuid, displayName: null, snapshot: own },
@@ -105,7 +110,7 @@ export class ShoppingService {
    */
   async apply<T>(write: (ctx: WriteContext) => WriteResult<T>): Promise<Applied<T>> {
     return this.exclusive(async () => {
-      const view = await this.view();
+      const view = await this.readView();
       const result = write({ own: view.own, merged: view.list, now: this.now(), ...this.ids() });
       await this.publish(result.slice);
       return { value: result.value, view };
@@ -286,12 +291,21 @@ export class ShoppingService {
   }
 
   /**
-   * Run `body` after every write already queued.
+   * Run `body` after everything already queued — **reads included**.
    *
    * Each write is a read-modify-write of our whole slice, so two in flight at once would
    * have the second overwrite the first with state read before it — and the server's
-   * version check cannot catch that, because both writes are legitimately ours. MCP tool
-   * calls arrive concurrently, so this is a real case, not a theoretical one.
+   * version check cannot catch that, because both writes are legitimately ours.
+   *
+   * Reads are in the same queue for a sharper reason (lcm-8wb). MCP tool calls do not
+   * arrive one at a time: a model that adds items and reads the list back in one turn
+   * has both dispatched together, so an unqueued `list_shopping` GETs the server before
+   * the add's PUT lands and answers with the list as it was — `{"sections": []}` right
+   * after five items were accepted. `mcp/server.ts` tells the model that an empty result
+   * is never to be reported as "your list is empty" unless it is real, and this one
+   * looks exactly real: no refusal, no unreadable source, nothing to tell it from an
+   * account with nothing on the list. The distinction survives only if a read taken
+   * after a write in call order actually sees that write.
    */
   private exclusive<T>(body: () => Promise<T>): Promise<T> {
     const run = this.writes.then(body, body);
