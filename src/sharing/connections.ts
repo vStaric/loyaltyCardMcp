@@ -119,6 +119,22 @@ export class ConnectionManager {
     this.roster.update((r) => withHandledRequest(withConnection(r, connection), requestId));
     await this.publishShareDoc();
     await this.onRosterChanged();
+    // Answer the request where the *server* can see it, not only in our roster
+    // (lcm-gxn). `handledRequestIds` is local state: it hides the request here and
+    // travels with this config dir and nowhere else.
+    //
+    // The requester already learns the outcome from the share doc's recipient key
+    // map, so this is not how they find out. What it fixes is the other reader of
+    // that answer — `requestShare.responded`, which the app's own inbox filter
+    // consults (`PendingRequestFilter`) alongside its local handled-ids. Those ids
+    // do not survive a restore from a recovery phrase, so with `responded` left
+    // false the app re-lists every connection this agent already accepted as an
+    // unanswered request, and asks the user to re-authorise peers they are in fact
+    // already sharing with. Measured: 5 accepted connections, 0 responded.
+    //
+    // Best-effort, exactly as in `decline`: the connection is real once the roster
+    // and the share doc say so, and a failed PUT here must not undo that.
+    await this.tellRequester(request, true);
     return connection;
   }
 
@@ -170,13 +186,23 @@ export class ConnectionManager {
   }
 
   /**
-   * PUT the sealed decline for `request`. Never throws: see {@link decline}.
+   * PUT the sealed decision for `request`. Never throws: see {@link decline}.
+   *
+   * `accepted` picks which verdict is sealed. Both sides of the answer are recorded
+   * the same way so that `requestShare.responded` means "this was answered", rather
+   * than "this was refused" — a distinction nothing downstream would survive.
    */
-  private async tellRequester(request: PendingRequest): Promise<boolean> {
+  private async tellRequester(request: PendingRequest, accepted = false): Promise<boolean> {
     try {
       const encKey = new Uint8Array(Buffer.from(request.encKey, 'base64'));
       const recipient = { uuid: request.requesterUuid, x25519PublicKey: encKey };
-      const envelope = sealShareResponse(this.crypto, this.identity, request.id, false, recipient);
+      const envelope = sealShareResponse(
+        this.crypto,
+        this.identity,
+        request.id,
+        accepted,
+        recipient,
+      );
       await this.api.putShareResponse(request.id, envelope);
       return true;
     } catch {

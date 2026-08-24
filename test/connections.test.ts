@@ -159,6 +159,19 @@ describe('accept', () => {
     expect(manager.connections()).toHaveLength(1);
   });
 
+  it('records the acceptance where the server can see it', async () => {
+    // Without this the server's `responded` flag stays false, and a device
+    // restored from the recovery phrase re-lists every already-accepted
+    // connection as an unanswered request (lcm-gxn).
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(user, 1)];
+
+    await manager.accept(1);
+
+    expect(backend.shareResponses.has(1)).toBe(true);
+    expect(Object.keys(backend.shareResponses.get(1)!.keys)).toEqual([user.uuid]);
+  });
+
   it('refuses an id the inbox does not hold', async () => {
     const { manager } = harness();
     await expect(manager.accept(99)).rejects.toBeInstanceOf(NoSuchRequestError);
@@ -278,7 +291,10 @@ describe('decline', () => {
 
     await expect(manager.decline(2)).rejects.toBeInstanceOf(ConnectedRequesterError);
     expect(manager.connections()).toHaveLength(1);
-    expect(backend.shareResponses.size).toBe(0);
+    // Nothing was written for the request that was refused. Scoped to request 2
+    // rather than counting every stored response, because accept(1) above now
+    // records its own answer (lcm-gxn) and a global count would fail on that.
+    expect(backend.shareResponses.has(2)).toBe(false);
   });
 
   it('refuses an id the inbox does not hold', async () => {
