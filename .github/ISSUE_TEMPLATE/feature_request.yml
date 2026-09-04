@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest something this MCP server should be able to do.
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        One thing worth knowing before you write: an agent here is deliberately
+        **neither more nor less capable than a human peer**. It cannot edit or delete
+        the user's cards, because a person you share with cannot either. Requests to
+        widen that are likely to be declined — it is the point of the connection
+        model, not an oversight.
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do
+      description: The task you want the agent to accomplish, before any proposed solution.
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposal
+    attributes:
+      label: What you would like to see
+      description: A new MCP tool, a CLI command, different behaviour from an existing one?
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: parity
+    attributes:
+      label: Peer parity
+      options:
+        - label: This is something a human peer sharing with the user could already do.
+          required: false

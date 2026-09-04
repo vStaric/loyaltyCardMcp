@@ -1,0 +1,86 @@
+name: Bug report
+description: Something the server does that it should not, or fails to do.
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to file this.
+
+        **Do not paste a recovery phrase, an `identity.json`, or a real envelope.**
+        If you found a security problem, close this and use
+        [private reporting](https://github.com/vStaric/loyaltyCardMcp/security/advisories/new) instead.
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what happened instead.
+      placeholder: |
+        I asked the agent to add "milk" to the shopping list.
+        I expected it to appear in the app. It did not, and the server logged `bad_signature`.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: A CLI command or the MCP tool call is ideal. Redact uuids if you like — say so if you do.
+      placeholder: |
+        1. export TOLAR_API_URL=https://...
+        2. npx tolar-mcp pair
+        3. ask the agent to ...
+    validations:
+      required: true
+
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did it happen
+      options:
+        - An MCP tool call from an agent
+        - The CLI (pair / connections / accept / decline / revoke)
+        - Building or running the tests
+        - Somewhere else
+    validations:
+      required: true
+
+  - type: input
+    id: mcp-client
+    attributes:
+      label: MCP client
+      description: Which agent was connected, and its version, if this came through MCP.
+      placeholder: Claude Code 2.x / Claude Desktop / other
+    validations:
+      required: false
+
+  - type: input
+    id: versions
+    attributes:
+      label: Node version, OS, and commit
+      description: '`node -v`, your OS, and the commit you are on (`git rev-parse --short HEAD`).'
+      placeholder: v22.11.0 / macOS 15 / e3f0b39
+    validations:
+      required: true
+
+  - type: dropdown
+    id: backend
+    attributes:
+      label: What is TOLAR_API_URL pointing at
+      description: The scheme and kind of host only — never the actual hostname.
+      options:
+        - An https backend I run
+        - http://localhost during development
+        - Not set / that is the problem
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Errors or logs
+      description: Paste the error. This is rendered as code, so no backticks needed.
+      render: text
+    validations:
+      required: false

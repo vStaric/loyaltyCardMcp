@@ -1,0 +1,57 @@
+name: Interop mismatch
+description: This server and the Tolar app disagree — different account, rejected signature, or a different merge result.
+labels: ['interop']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This project is a *second* implementation of the app's merge and envelope
+        semantics, and drift between them does not fail loudly. A mismatch is a
+        first-class bug here even if nothing looks "broken" — please do file it.
+
+        **Give reduced test vectors, never real data.** A synthetic phrase and a
+        two-row list prove the point as well as your account does.
+
+  - type: dropdown
+    id: seam
+    attributes:
+      label: Which seam disagrees
+      options:
+        - Recovery phrase → account uuid or keys (identity derivation)
+        - Envelope signed bytes (a signature one side rejects)
+        - Envelope encryption (ciphertext one side cannot open)
+        - Shopping-list merge result
+        - Card merge result
+        - Share code, invite, or key fingerprint / safety number
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: input
+    attributes:
+      label: The input, as a vector
+      description: The exact bytes/JSON both sides were given. Use a throwaway phrase.
+      render: json
+    validations:
+      required: true
+
+  - type: textarea
+    id: divergence
+    attributes:
+      label: What each side produced
+      description: What this server produced, and what the app or backend produced.
+      placeholder: |
+        this server: 3f2a...  (uuid 0c1b-...)
+        the app:     9d71...  (uuid 4ea2-...)
+        first differing byte: 0
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: App or backend version on the other side
+      placeholder: Tolar Android 1.0.3 from Play
+    validations:
+      required: false

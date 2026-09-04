@@ -339,3 +339,7 @@ in the Android repo at `docs/PRD-agent-connection.md` (§4, §6, §7).
 - `lcm-bgp` — shared merge test vectors across app and MCP (from lc-0sg)
 - `lcm-gll` — read card photo bytes (`ImageCipher` port) ✅
 - `lcm-co0` — decline/dismiss an inbound share request ✅
+
+## License
+
+MIT — see [LICENSE](LICENSE).
