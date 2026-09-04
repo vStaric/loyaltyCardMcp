@@ -22,3 +22,8 @@ __pycache__/
 state.json
 CLAUDE.local.md
 GEMINI.md
+
+# Local QA seeders. They carry a backend host and machine-local paths as
+# defaults, which src/config.ts deliberately refuses to do; keep them out.
+/seed.mjs
+/verify.mjs
