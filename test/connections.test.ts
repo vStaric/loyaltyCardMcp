@@ -13,6 +13,7 @@ import {
   SelfConnectError,
   encodeShareDoc,
 } from '../src/sharing/connections.js';
+import type { Connection } from '../src/sharing/roster.js';
 import { SHARE_RESPONSE_TYPE } from '../src/sharing/shareResponse.js';
 import { RosterStore } from '../src/sharing/rosterStore.js';
 import { SyncStateStore } from '../src/sync/syncState.js';
@@ -121,7 +122,7 @@ describe('accept', () => {
 
     const connection = await manager.accept(1);
 
-    expect(connection).toMatchObject({ uuid: user.uuid, scopes: ['cards', 'shopping'] });
+    expect(connection).toMatchObject({ uuid: user.uuid, learnedFrom: null });
     // The signal the app actually reads.
     expect(Object.keys(backend.shares.get(agent.uuid)!.envelope.keys).sort()).toEqual(
       [agent.uuid, user.uuid].sort(),
@@ -129,10 +130,13 @@ describe('accept', () => {
     expect(republished).toHaveLength(1);
   });
 
-  it('records the scopes this agent is granting, when the operator narrows them', async () => {
+  it('has no narrower answer than the household to give', async () => {
+    // lcm-hfd: accepting is admission, and a member is sealed every resource. The
+    // connection this returns carries no per-member grant, because there is none to
+    // record — the CLI refuses `--scopes` rather than quietly widening past it.
     const { backend, manager } = harness();
     backend.requests = [requestFrom(user, 1)];
-    expect((await manager.accept(1, { scopes: ['shopping'] })).scopes).toEqual(['shopping']);
+    expect(await manager.accept(1)).not.toHaveProperty('scopes');
   });
 
   it('takes the operator’s label over the requester’s claim', async () => {
@@ -194,7 +198,6 @@ describe('accept', () => {
           displayName: 'Vid',
           signKey: b64(user.signPublicKey),
           encKey: b64(user.encPublicKey),
-          scopes: ['cards'],
           kind: 'person',
           connectedAt: 0,
           admittedAt: 0,
@@ -382,7 +385,6 @@ describe('the grant document', () => {
           displayName: 'Vid',
           signKey: 's',
           encKey: 'e',
-          scopes: ['cards', 'shopping'],
           kind: 'agent',
           connectedAt: 0,
           admittedAt: 0,
@@ -393,6 +395,32 @@ describe('the grant document', () => {
     expect(doc.connections[0]).toMatchObject({ scopes: ['CARDS', 'SHOPPING'], kind: 'AGENT' });
   });
 
+  it('says every scope for every member, because that is what it wraps keys to', () => {
+    // The field stays on the wire for `Roster.kt`, but it is written from the rule
+    // rather than from anything per-member (lcm-hfd): a document that told the app one
+    // member gets less than another would be describing a narrowing this agent does not
+    // perform, while the recipient map beside it said otherwise.
+    const member = (uuid: string, learnedFrom: string | null): Connection => ({
+      uuid,
+      displayName: null,
+      signKey: 's',
+      encKey: 'e',
+      kind: 'person',
+      connectedAt: 0,
+      admittedAt: 0,
+      learnedFrom,
+    });
+    const doc = JSON.parse(
+      encodeShareDoc([member('direct', null), member('indirect', 'direct')]),
+    ) as {
+      connections: Record<string, unknown>[];
+    };
+    expect(doc.connections.map((c) => c.scopes)).toEqual([
+      ['CARDS', 'SHOPPING'],
+      ['CARDS', 'SHOPPING'],
+    ]);
+  });
+
   it('omits a display name nobody set, the way the app’s encoder does', () => {
     const doc = JSON.parse(
       encodeShareDoc([
@@ -401,7 +429,6 @@ describe('the grant document', () => {
           displayName: null,
           signKey: 's',
           encKey: 'e',
-          scopes: [],
           kind: 'person',
           connectedAt: 0,
           admittedAt: 0,

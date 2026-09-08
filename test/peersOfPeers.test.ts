@@ -32,10 +32,14 @@ import {
  * a user who never accepted anything.
  *
  * Everything else here guards the ways that could be made to work badly: a peer's
- * document is only believed when it verifies against the key **we** pinned, a peer can
- * never re-pin an account we already hold, and an indirect entry is granted exactly
- * what the connection that vouched for it is granted and never the default of
- * everything.
+ * document is only believed when it verifies against the key **we** pinned, and a peer
+ * can never re-pin an account we already hold.
+ *
+ * What an indirect entry is *granted* is no longer among them. lcm-8lm answered that
+ * with inheritance — an indirect peer got the scopes of the connection it was learned
+ * through — and lcm-hfd superseded it: household membership implies every scope, so a
+ * peer learned this way is sealed everything, barcode values included. The tests that
+ * pinned the inheritance rule now pin the rule that replaced it.
  */
 let sodium: SodiumCrypto;
 let crypto: EnvelopeCrypto;
@@ -174,37 +178,63 @@ describe('the whole point', () => {
   });
 });
 
-describe('the scope an indirect peer gets', () => {
-  it('inherits the scopes of the connection it was learned through', async () => {
+describe('what an indirect peer is sealed (lcm-hfd)', () => {
+  it('records no per-member grant, because there is none to inherit', async () => {
     const h = harness();
-    h.backend.requests = [requestFrom(vid, 1)];
     vidVouchesFor(h, [shareDocEntry(ana, 'Ana')]);
-    await h.manager.accept(1, { scopes: ['shopping'] });
+    await connectVid(h);
 
-    // Not ALL_SCOPES, which is what a roster written before scopes means and what a
-    // silent default would have handed an account nobody approved.
-    expect(h.manager.connections().find((c) => c.uuid === ana.uuid)!.scopes).toEqual(['shopping']);
+    const entries = h.manager.connections();
+    expect(entries.find((c) => c.uuid === ana.uuid)).not.toHaveProperty('scopes');
+    expect(entries.find((c) => c.uuid === vid.uuid)).not.toHaveProperty('scopes');
   });
 
-  it('ignores the scopes the vouching peer wrote — those are about their data', async () => {
+  it('seals the cards to a peer nobody here approved, barcode value and all', async () => {
+    // The cost of the household rule, stated as a test rather than left to be
+    // discovered: Ana is in this roster because Vid named her, and she reads the
+    // barcode. This was put to the overseer with that consequence spelt out and
+    // accepted as the specified behaviour.
     const h = harness();
-    h.backend.requests = [requestFrom(vid, 1)];
-    vidVouchesFor(h, [{ ...shareDocEntry(ana, 'Ana'), scopes: ['CARDS', 'SHOPPING'] }]);
-    await h.manager.accept(1, { scopes: ['cards'] });
+    vidVouchesFor(h, [shareDocEntry(ana, 'Ana')]);
+    await connectVid(h);
 
-    expect(h.manager.connections().find((c) => c.uuid === ana.uuid)!.scopes).toEqual(['cards']);
+    await h.cards.add({ title: 'Bakery', barcodeValue: '9312345678907', barcodeFormat: 'EAN_13' });
+    const envelope = h.backend.cards.get(agent.uuid)!.envelope;
+    const plaintext = crypto.decrypt(envelope, ana.uuid, ana.encryptionKeyPair);
+    expect(Buffer.from(plaintext).toString('utf8')).toContain('9312345678907');
   });
 
-  it('does not wrap a cards key to a peer inherited from a shopping-only connection', async () => {
+  it('seals every resource to every member, so no member sees less than another', async () => {
     const h = harness();
-    h.backend.requests = [requestFrom(vid, 1)];
-    vidVouchesFor(h, [shareDocEntry(ana, 'Ana')]);
-    await h.manager.accept(1, { scopes: ['shopping'] });
+    vidVouchesFor(h, [shareDocEntry(ana, 'Ana'), shareDocEntry(mo, 'Mo')]);
+    await connectVid(h);
+
+    await h.cards.add({ title: 'Bakery' });
+    const keys = Object.keys(h.backend.cards.get(agent.uuid)!.envelope.keys).sort();
+    expect(keys).toEqual([agent.uuid, ana.uuid, mo.uuid, vid.uuid].sort());
+  });
+
+  it('lets no peer widen or narrow what it seals by what its document says', async () => {
+    // A grant document's `scopes` are that peer's business, about that peer's data, and
+    // are not read here. Under lcm-8lm that mattered because scopes varied; it matters
+    // now because it is the property that must survive collapsing them — membership is
+    // implied by the roster, never asserted by a peer.
+    const h = harness();
+    vidVouchesFor(h, [
+      { ...shareDocEntry(ana, 'Ana'), scopes: [] },
+      { ...shareDocEntry(mo, 'Mo'), scopes: ['CARDS', 'SHOPPING', 'EVERYTHING'] },
+    ]);
+    await connectVid(h);
 
     await h.cards.add({ title: 'Bakery' });
     const keys = h.backend.cards.get(agent.uuid)!.envelope.keys;
-    expect(keys[ana.uuid]).toBeUndefined();
-    expect(keys[vid.uuid]).toBeUndefined();
+    // The one that said "nothing" and the one that tried to say "more" are recipients
+    // on exactly the same terms as each other.
+    expect(keys[ana.uuid]).toBeDefined();
+    expect(keys[mo.uuid]).toBeDefined();
+    for (const entry of h.manager.connections()) {
+      expect(entry).not.toHaveProperty('scopes');
+    }
   });
 });
 
@@ -242,8 +272,8 @@ describe('what a peer is not allowed to do', () => {
     await connectVid(h);
     h.backend.requests = [...h.backend.requests, requestFrom(ana, 2)];
 
-    // Nobody compared Ana's safety number and nobody chose her scopes. A peer vouching
-    // for her is not the operator answering, so the request stays waiting.
+    // Nobody compared Ana's safety number. A peer vouching for her is not the operator
+    // answering, so the request stays waiting.
     expect((await h.manager.pending()).map((r) => r.requesterUuid)).toEqual([ana.uuid]);
   });
 
@@ -253,13 +283,13 @@ describe('what a peer is not allowed to do', () => {
     await connectVid(h);
 
     h.backend.requests = [...h.backend.requests, requestFrom(ana, 2)];
-    await h.manager.accept(2, { scopes: ['cards'] });
+    await h.manager.accept(2);
 
     const entries = h.manager.connections().filter((c) => c.uuid === ana.uuid);
     expect(entries).toHaveLength(1);
-    // One row, direct, and carrying the scopes the operator chose rather than the ones
-    // it inherited while it was only vouched for.
-    expect(entries[0]).toMatchObject({ learnedFrom: null, scopes: ['cards'] });
+    // One row, and now a direct one: what changes on accepting is that the operator
+    // compared a safety number, not what she is sealed.
+    expect(entries[0]).toMatchObject({ learnedFrom: null });
   });
 
   it('refuses a key that is not 32 real base64 bytes, and names the entry', async () => {
@@ -278,7 +308,7 @@ describe('what a peer is not allowed to do', () => {
     const short = b64(new Uint8Array(16).fill(3));
     const merged = withIndirectPeers(
       emptyRoster(),
-      directConnection(vid, ['cards']),
+      directConnection(vid),
       [
         {
           uuid: ana.uuid,
@@ -493,9 +523,9 @@ describe('losing the connection an indirect peer arrived through', () => {
   it('drops an orphan the roster file somehow already holds', () => {
     const dir = mkdtempSync(join(tmpdir(), 'tolar-mcp-peers-'));
     dirs.push(dir);
-    const orphan = { ...directConnection(ana, ['cards']), learnedFrom: 'gone' };
+    const orphan = { ...directConnection(ana), learnedFrom: 'gone' };
     new RosterStore(dir).save({
-      connections: [directConnection(vid, ['cards']), orphan],
+      connections: [directConnection(vid), orphan],
       handledRequestIds: [],
       evictions: [],
     });
@@ -540,13 +570,12 @@ function emptyRoster(): Roster {
   return { connections: [], handledRequestIds: [], evictions: [] };
 }
 
-function directConnection(identity: Identity, scopes: Connection['scopes']): Connection {
+function directConnection(identity: Identity): Connection {
   return {
     uuid: identity.uuid,
     displayName: null,
     signKey: b64(identity.signPublicKey),
     encKey: b64(identity.encPublicKey),
-    scopes,
     kind: 'person',
     connectedAt: 1_800_000_000_000,
     admittedAt: 1_800_000_000_000,

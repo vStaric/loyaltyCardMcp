@@ -170,7 +170,7 @@ user's own.
 export TOLAR_API_URL=https://your-tolar-backend.example
 npx tolar-mcp pair              # publishes the user row, prints QR + code + safety number
 npx tolar-mcp connections       # who this agent shares with, and who is asking
-npx tolar-mcp accept 7          # accept a request, after comparing its safety number
+npx tolar-mcp accept 7          # accept a request — admission to the household
 npx tolar-mcp decline 7         # refuse one: hide it here, and tell the requester
 npx tolar-mcp leave             # walk this agent out of every household it is in
 npx tolar-mcp serve             # the MCP server, on stdio — what a host launches
@@ -192,12 +192,17 @@ card fail with *"cards belong to the account that created them"*, naming the own
 every card in a result carries `editableByThisAgent` so a caller never has to infer it.
 An agent that reported an edit which did not happen would be worse than one that refuses.
 
-**An ungranted resource is a refusal, not an empty list.** A connection that granted the
-shopping list but not the cards (`lc-chp`) publishes a cards envelope with no content key
-wrapped to this agent. That surfaces as a named `not_granted` entry with the sentence to
-say — never as "you have no cards", which would be a lie about the user's data. The other
-reasons (`not_published`, `not_verified`, `undecryptable`, `malformed`, `unreachable`)
-stay distinguishable for the same reason.
+**An ungranted resource is a refusal, not an empty list.** A peer whose cards envelope
+carries no content key wrapped to this agent has not given this agent its cards. That
+surfaces as a named `not_granted` entry with the sentence to say — never as "you have no
+cards", which would be a lie about the user's data. The other reasons (`not_published`,
+`not_verified`, `undecryptable`, `malformed`, `unreachable`) stay distinguishable for the
+same reason.
+
+This is the **inbound** direction, and it is the only one left with an answer of its own:
+what a peer seals to this agent is decided on their device and learnt here only from
+whether the envelope opens. Outbound, this agent no longer narrows anything — see
+[Everyone in the household sees everything](#everyone-in-the-household-sees-everything-lcm-hfd).
 
 **Writes never rest on a degraded read.** The cards blob is published whole, so the write
 path re-reads it first — and a read this peer cannot verify or open throws rather than
@@ -307,6 +312,48 @@ one the app shows.
 What the *user* shares back is set on their accept screen, not here. This agent learns it
 only by whether their envelope carries a key it can open.
 
+### Everyone in the household sees everything (`lcm-hfd`)
+
+**Household membership implies every scope.** Overseer decision, 2026-09-08. Everyone
+this agent is connected to — the person who ran the connect flow, and every peer learnt
+through their grant document — is sealed every resource it publishes: all cards, all
+shopping lists, barcode values included. What a member is sealed does not vary by member,
+so there is no per-connection grant left to record, to display, or to choose. `accept`
+takes no `--scopes`, and refuses the flag rather than quietly widening past a narrowing
+the operator asked for.
+
+This supersedes a real control. `lc-chp` let a connection be granted the shopping list
+and not the cards, and `lcm-8lm` had an indirect peer inherit the scopes of the
+connection it was learnt through, precisely so that an account nobody approved could not
+collect the barcode values by way of a default. The decision was taken with that cost
+stated: with no accept step on this side, scope narrowing was the only control a member
+had over a peer somebody else invited, and collapsing it leaves them none. The answer was
+that this is expected and correct. It is the specified behaviour, not an oversight to
+mitigate around. It does raise what rides on the one control that is left: eviction is a
+member's to exercise and never this agent's (`lcm-9m7`).
+
+A roster written before this — narrowed entries, and the deliberate "connected, sharing
+nothing" of an empty grant — widens on load. Nothing in this version can narrow anyone,
+and one member quietly reading less than another would be a state no operator could get
+out of.
+
+Two things this did **not** touch, and neither may travel with it:
+
+- **Verification and key pinning are unchanged.** This widens who receives a content key.
+  It does not change who can forge an envelope: an indirect peer's writes are still
+  verified against the key pinned for them, and a forgery signed by anyone else is
+  refused by name.
+- **A peer still cannot set what it is sealed.** The `scopes` a grant document carries
+  are not read, and there is nowhere left to put them. Membership is implied by this
+  agent's own roster and asserted by nobody — the property `lcm-8lm` was careful about
+  when scopes varied, and which matters more now that they do not.
+
+Enforcement stays in one place: the recipient list built at seal time, in
+`cardService.publish` and `shoppingService.publish`. Building that list is the same act
+as handing out keys, so an account left out of the wrap holds nothing the ciphertext will
+open for, whatever any listing says. It filtered by scope; it now reads the household
+membership fresh at every publish, which is where an eviction takes effect.
+
 ### Peers of peers (`lcm-8lm`)
 
 A roster built only from accepted requests holds exactly the accounts that ran the
@@ -330,12 +377,14 @@ wrote and name whichever account it likes as a recipient of our cards.
 
 Three decisions are worth stating rather than leaving to be inferred:
 
-**An indirect peer inherits the scopes of the connection it was learned through.** Not
-`ALL_SCOPES` — that is what a roster written before scopes means, and taking it as the
-default here would hand the barcode values to an account nobody approved because of a
-backwards-compatibility rule. Inheritance is the only reading with a person behind it:
-the operator decided what this agent shares with A, A vouched for B, so B gets what A
-gets and never more. Narrow A's grant and everything learned through A narrows with it.
+**An indirect peer is sealed everything, like every other member.** This one was
+answered twice. `lcm-8lm` gave it inheritance — B gets what A gets and never more —
+against the alternative of defaulting to every scope and handing the barcode values to an
+account nobody approved. `lcm-hfd` then collapsed the scopes altogether, so inheritance
+has nothing left to carry and the alternative it was guarding against is the rule:
+membership is the grant, and an indirect peer is a member. The other two decisions below
+are untouched by that, and they are what keeps a peer from turning "everyone sees
+everything" into "anyone can join".
 
 **One hop.** Only direct connections' documents are read. Following an indirect peer's
 document too would let a single vouched-for account extend this agent's roster by itself,
@@ -350,10 +399,12 @@ visible route as any other indirect entry.
 
 `tolar-mcp connections` marks indirect entries and names the connection each arrived
 through, because an indirect peer is an account the operator did not personally approve
-and the one thing they must not have to guess at. Their own inbound request still shows
-as waiting, too: being vouched for is not the operator comparing a safety number and
-choosing a grant, and accepting it is what turns the entry into a direct connection —
-one row that upgrades, never a second.
+and the one thing they must not have to guess at — all the more so now that it reads the
+barcode values. It says that plainly, once, for the household, rather than printing a
+per-account grant that no longer varies. Their own inbound request still shows as
+waiting, too: being vouched for is not the operator comparing a safety number, and
+accepting it is what turns the entry into a direct connection — one row that upgrades,
+never a second.
 
 ### The agent cannot evict anybody (`lcm-9m7`)
 
@@ -496,6 +547,7 @@ in the Android repo at `docs/PRD-agent-connection.md` (§4, §6, §7).
 - `lcm-8lm` — merge peers of peers from the verified grant doc (agent half of lc-uj5o) ✅
 - `lcm-9m7` — the agent cannot evict; it obeys evictions and can leave (agent half of
   lc-gx2w) ✅
+- `lcm-hfd` — household membership implies all scopes (agent half of lc-gx2w) ✅
 
 ## License
 

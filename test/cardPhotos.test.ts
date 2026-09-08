@@ -60,7 +60,6 @@ const connection = (): Connection => ({
   displayName: 'Vid',
   signKey: b64(user.signPublicKey),
   encKey: b64(user.encPublicKey),
-  scopes: ['cards'],
   kind: 'person',
   connectedAt: 0,
   admittedAt: 0,

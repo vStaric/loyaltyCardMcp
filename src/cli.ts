@@ -7,12 +7,7 @@ import { initSodium } from './crypto/sodium.js';
 import { serveStdio } from './mcp/server.js';
 import { TolarPeer } from './peer.js';
 import type { PeerDiscovery } from './sharing/connections.js';
-import {
-  RESOURCE_SCOPES,
-  type Connection,
-  type Eviction,
-  type ResourceScope,
-} from './sharing/roster.js';
+import type { Connection, Eviction } from './sharing/roster.js';
 
 /**
  * The operator-facing commands.
@@ -27,7 +22,7 @@ Usage:
   tolar-mcp serve [--api-url URL] [--config-dir DIR]
   tolar-mcp pair [--api-url URL] [--name NAME] [--config-dir DIR] [--no-qr]
   tolar-mcp connections [--api-url URL] [--config-dir DIR]
-  tolar-mcp accept <request-id> [--scopes cards,shopping] [--kind agent|person]
+  tolar-mcp accept <request-id> [--kind agent|person]
   tolar-mcp decline <request-id> [--api-url URL] [--config-dir DIR]
   tolar-mcp leave [--api-url URL] [--config-dir DIR]
   tolar-mcp status [--config-dir DIR]
@@ -40,6 +35,8 @@ Commands:
   connections     Show who this agent shares with, refresh peers of peers, and list any
                   request waiting for an answer.
   accept          Accept an inbound share request, after comparing its safety number.
+                  Accepting is admission to the household: they are sealed every
+                  resource this agent publishes. There is no narrower answer.
   decline         Refuse an inbound share request: hide it here, and record the refusal.
   leave           Take this agent out of every household it is in, and tell them. It
                   cannot take anyone else out of one — that is a member's to do, in the
@@ -193,19 +190,27 @@ async function connections(overrides: Partial<PeerConfig>): Promise<number> {
     const names = new Map(current.map((c) => [c.uuid, c.displayName ?? c.uuid]));
     process.stdout.write('Connected:\n');
     for (const c of current) {
-      const scopes = c.scopes.length > 0 ? c.scopes.join(', ') : 'nothing';
       process.stdout.write(
         `  ${c.displayName ?? '(unnamed)'}  ${c.uuid}${indirectTag(c, names)}\n` +
-          `    this agent shares: ${scopes}   labelled: ${c.kind}\n`,
+          `    labelled: ${c.kind}\n`,
       );
     }
+    // Said once, for the household, rather than per entry: there is no per-account
+    // grant to print any more, and a column that showed the same value on every row
+    // would read as a control an operator could change. This one cannot be narrowed.
+    process.stdout.write(
+      '\n  Everyone listed is a member of this household, and this agent seals every\n' +
+        '  resource it publishes to all of them — every card, every shopping list, barcode\n' +
+        '  values included. Membership is the whole grant; there is no per-account setting\n' +
+        '  here and nothing to narrow.\n',
+    );
     if (current.some((c) => c.learnedFrom !== null)) {
       process.stdout.write(
         '\n  Entries marked "indirect" are accounts you did not accept yourself. They were\n' +
           '  named in the grant document of the connection they are attributed to, which was\n' +
           "  verified against that connection's pinned key before anything was added, and\n" +
-          '  this agent now seals its writes to them as well. An indirect peer is granted\n' +
-          '  exactly what the connection it was learned through is granted, never more.\n' +
+          '  this agent seals its writes to them on exactly the terms above — an account\n' +
+          '  you did not personally approve reads the barcode values too.\n' +
           '  A member of the household can remove any of them; this agent cannot.\n',
       );
     }
@@ -268,19 +273,29 @@ async function accept(
     process.stderr.write('accept needs the request id from `tolar-mcp connections`\n');
     return 1;
   }
+  if (flags.has('scopes')) {
+    // Refused rather than ignored. An operator typing `--scopes shopping` is asking for
+    // a narrowing this agent can no longer perform, and accepting the request anyway
+    // would hand over the cards they just said to withhold.
+    process.stderr.write(
+      '--scopes is gone: household membership implies every scope, so accepting shares\n' +
+        'every card and every shopping list with them, barcode values included. Re-run\n' +
+        'without the flag if that is what you mean to do.\n',
+    );
+    return 1;
+  }
   const agent = await openAgent(overrides);
-  const scopes = parseScopes(flags.get('scopes'));
   const kindFlag = flags.get('kind');
   const connection = await agent.connections.accept(id, {
-    ...(scopes ? { scopes } : {}),
     ...(kindFlag === 'person' || kindFlag === 'agent' ? { kind: kindFlag } : {}),
   });
   process.stdout.write(
     `Connected: ${connection.displayName ?? connection.uuid}\n` +
-      `This agent now shares its ${connection.scopes.join(' and ') || 'nothing'} with them.\n` +
+      'They are a member of this household now, so this agent seals every resource it\n' +
+      'publishes to them — cards and shopping lists alike, barcode values included.\n' +
       '\nWhat THEY share with this agent is their decision, made on their accept screen.\n' +
-      'If they withheld the cards, the card tools will say so by name rather than\n' +
-      'reporting an empty list.\n',
+      'If their cards do not reach this agent, the card tools will say so by name rather\n' +
+      'than reporting an empty list.\n',
   );
   return 0;
 }
@@ -448,27 +463,6 @@ function reportDiscovery(discovery: PeerDiscovery, write: (line: string) => void
         `(${source.reason})\n  ${source.detail}\n`,
     );
   }
-}
-
-/** `--scopes cards,shopping` — what this agent shares, or undefined for the default. */
-function parseScopes(raw: string | true | undefined): readonly ResourceScope[] | undefined {
-  if (typeof raw !== 'string') return undefined;
-  const names = raw
-    .split(',')
-    .map((s) => s.trim().toLowerCase())
-    .filter((s) => s !== '');
-  const scopes = names.filter((n): n is ResourceScope =>
-    (RESOURCE_SCOPES as readonly string[]).includes(n),
-  );
-  const unknown = names.filter((n) => !(RESOURCE_SCOPES as readonly string[]).includes(n));
-  if (unknown.length > 0) {
-    throw new Error(
-      `unknown scope(s): ${unknown.join(', ')} (known: ${RESOURCE_SCOPES.join(', ')})`,
-    );
-  }
-  // An explicit empty list is a real answer — "connected, sharing nothing" — so it is
-  // kept rather than folded back into the default.
-  return scopes;
 }
 
 async function status(configDir: string): Promise<number> {

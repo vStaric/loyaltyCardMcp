@@ -2,9 +2,7 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { connectionKindFromWire } from './connectInvite.js';
 import {
-  ALL_SCOPES,
   EMPTY_ROSTER,
-  resourceScopeFromWire,
   withoutEvicted,
   withoutOrphans,
   type Connection,
@@ -70,9 +68,15 @@ export class RosterStore {
  * Parse a persisted roster.
  *
  * Every field is checked because this file decides who our content keys get wrapped
- * to. An entry missing a key, or holding a scope this version does not know, is
- * dropped with the reason named rather than repaired into something plausible —
- * inventing a grant is the one failure this layer must not have.
+ * to. An entry missing a key is dropped rather than repaired into something plausible —
+ * inventing a member is the one failure this layer must not have.
+ *
+ * A `scopes` array written before lcm-hfd is **read and discarded**, and that is a
+ * widening: a roster that recorded "shopping only" for someone now loads as a household
+ * member sealed everything. It is the decision applied to the state that already
+ * exists, not an accident of parsing — membership implies every scope, and a narrowing
+ * this version cannot perform must not be honoured on the way in either, because it
+ * would leave one member seeing less than another with nothing able to change it back.
  */
 function decodeRoster(text: string, path: string): Roster {
   let parsed: unknown;
@@ -139,19 +143,11 @@ function decodeConnection(raw: unknown): Connection | null {
   if (typeof uuid !== 'string' || typeof signKey !== 'string' || typeof encKey !== 'string') {
     return null;
   }
-  const scopes = Array.isArray(o.scopes)
-    ? o.scopes
-        .map((s) => resourceScopeFromWire(typeof s === 'string' ? s : null))
-        .filter((s) => s !== null)
-    : // A connection persisted before scopes existed granted both, which is what an
-      // absent field has always meant; an *empty* list is a real answer and is kept.
-      ALL_SCOPES;
   return {
     uuid,
     displayName: typeof o.displayName === 'string' ? o.displayName : null,
     signKey,
     encKey,
-    scopes,
     kind: connectionKindFromWire(typeof o.kind === 'string' ? o.kind : null),
     connectedAt: typeof o.connectedAt === 'number' && o.connectedAt >= 0 ? o.connectedAt : 0,
     // A roster written before evictions existed dates nothing, and an entry this agent

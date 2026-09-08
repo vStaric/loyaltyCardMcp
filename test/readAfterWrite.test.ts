@@ -92,7 +92,6 @@ const connection = (): Connection => ({
   displayName: 'Vid',
   signKey: Buffer.from(user.signPublicKey).toString('base64'),
   encKey: Buffer.from(user.encPublicKey).toString('base64'),
-  scopes: ['cards', 'shopping'],
   kind: 'person',
   connectedAt: 0,
   admittedAt: 0,

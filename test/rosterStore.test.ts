@@ -3,8 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import {
-  ALL_SCOPES,
-  grants,
+  householdMembers,
   signingKeyOf,
   toRecipient,
   type Connection,
@@ -37,7 +36,6 @@ const connection: Connection = {
   displayName: 'Vid',
   signKey: Buffer.from(new Uint8Array(32).fill(1)).toString('base64'),
   encKey: Buffer.from(new Uint8Array(32).fill(2)).toString('base64'),
-  scopes: ['cards'],
   kind: 'person',
   connectedAt: 1_800_000_000_000,
   admittedAt: 1_800_000_000_000,
@@ -80,33 +78,36 @@ describe('RosterStore', () => {
     expect(new RosterStore(dir).load().connections).toHaveLength(1);
   });
 
-  it('reads a connection written before scopes existed as granting both', () => {
+  it('loads a narrowed entry written before lcm-hfd as a full household member', () => {
+    // The widening is the decision, applied to state that already exists: a roster that
+    // recorded "shopping only" for someone cannot go on meaning that, because nothing
+    // left in this version can narrow anyone and one member reading less than another
+    // would be a state no operator could get out of.
     const dir = tempDir();
     writeFileSync(
       join(dir, 'roster.json'),
-      JSON.stringify({ connections: [{ uuid: 'u', signKey: 'a', encKey: 'b' }] }),
+      JSON.stringify({
+        connections: [{ uuid: 'u', signKey: 'a', encKey: 'b', scopes: ['shopping'] }],
+      }),
     );
-    expect(new RosterStore(dir).load().connections[0]!.scopes).toEqual(ALL_SCOPES);
+    const loaded = new RosterStore(dir).load().connections;
+    expect(loaded).toHaveLength(1);
+    expect(loaded[0]).not.toHaveProperty('scopes');
+    expect(householdMembers({ connections: loaded, handledRequestIds: [], evictions: [] })).toEqual(
+      loaded,
+    );
   });
 
-  it('keeps an explicitly empty grant — connected, sharing nothing', () => {
+  it('loads an entry that granted nothing at all as a full household member', () => {
+    // The old file's one truly deliberate answer — "connected, sharing nothing" — is
+    // also gone. Membership is now the whole grant, so an empty list is not a narrower
+    // membership; it is a member who used to be sealed nothing and now is sealed all.
     const dir = tempDir();
     writeFileSync(
       join(dir, 'roster.json'),
       JSON.stringify({ connections: [{ uuid: 'u', signKey: 'a', encKey: 'b', scopes: [] }] }),
     );
-    expect(new RosterStore(dir).load().connections[0]!.scopes).toEqual([]);
-  });
-
-  it('drops a scope this version does not know instead of guessing at it', () => {
-    const dir = tempDir();
-    writeFileSync(
-      join(dir, 'roster.json'),
-      JSON.stringify({
-        connections: [{ uuid: 'u', signKey: 'a', encKey: 'b', scopes: ['cards', 'photos'] }],
-      }),
-    );
-    expect(new RosterStore(dir).load().connections[0]!.scopes).toEqual(['cards']);
+    expect(new RosterStore(dir).load().connections).toHaveLength(1);
   });
 
   it('drops an entry with no key rather than keeping a connection it cannot seal to', () => {
@@ -135,9 +136,13 @@ describe('RosterStore', () => {
 });
 
 describe('connection helpers', () => {
-  it('answers the one question the wrap layer asks', () => {
-    expect(grants(connection, 'cards')).toBe(true);
-    expect(grants(connection, 'shopping')).toBe(false);
+  it('answers the one question the wrap layer asks: everyone in the roster', () => {
+    const indirect = { ...connection, uuid: 'user-2', learnedFrom: 'user-1' };
+    const roster = { connections: [connection, indirect], handledRequestIds: [], evictions: [] };
+    expect(householdMembers(roster)).toEqual([connection, indirect]);
+    // And an evicted member is gone from the answer the very next time it is asked —
+    // the recipient list is never cached, which is what makes this the enforcement point.
+    expect(householdMembers({ ...roster, connections: [connection] })).toEqual([connection]);
   });
 
   it('turns a pinned key straight into an envelope recipient', () => {

@@ -12,35 +12,39 @@ import type { ConnectionKind } from './connectInvite.js';
  */
 
 /**
- * One of the two resources a connection can be granted, independently of the other
- * (lc-chp, PRD-agent-connection §4.3).
+ * One of the two resources this agent publishes (PRD-agent-connection §4.3).
  *
- * ## Two directions, and only one of them lives here
- * A scope on *our* roster entry is what **we** seal to that peer. What the peer seals
- * to *us* is their decision, recorded on their device, and this file cannot see it —
- * we learn it only by whether their envelope carries a content key wrapped to us. So
- * a card read that comes back ungranted is not a state this roster can predict, and
- * the card layer must report the refusal it actually met rather than guess from here.
+ * ## It stopped being a per-member grant (lcm-hfd)
+ * It was one. A roster entry carried the scopes **we** seal to that peer, and lc-chp
+ * let an operator connect an account to the shopping list and not the cards. Household
+ * membership now implies every scope (overseer, 2026-09-08): everyone in the household
+ * sees everything, all cards and all lists, barcode values included. What a member is
+ * sealed no longer varies by member, so there is nothing per-connection left to record
+ * and this type is no longer a field on {@link Connection}.
  *
- * The honest limit is per resource, not per field: a scope names a whole resource
- * because a whole resource is what one content key seals. Granting `cards` grants the
- * barcode values.
+ * What survives is the vocabulary, and the honest limit it names: a scope is a whole
+ * resource, because a whole resource is what one content key seals. Membership grants
+ * the barcode values.
+ *
+ * ## The other direction is untouched
+ * What a peer seals to *us* is their decision, recorded on their device, and this file
+ * cannot see it — we learn it only by whether their envelope carries a content key
+ * wrapped to us. So a read that comes back ungranted is still not a state this roster
+ * can predict, and the card and shopping layers must report the refusal they actually
+ * met rather than guess from here.
  */
 export type ResourceScope = 'cards' | 'shopping';
 
-export const RESOURCE_SCOPES: readonly ResourceScope[] = ['cards', 'shopping'];
-
-/** Both resources — the default grant, and what a roster written before scopes holds. */
-export const ALL_SCOPES: readonly ResourceScope[] = RESOURCE_SCOPES;
-
-/** The scope `wire` names, or `null` for anything this version does not recognise. */
-export function resourceScopeFromWire(wire: string | null | undefined): ResourceScope | null {
-  return RESOURCE_SCOPES.find((s) => s === wire) ?? null;
-}
+/** Every resource: what household membership implies, and what the grant doc spells. */
+export const ALL_SCOPES: readonly ResourceScope[] = ['cards', 'shopping'];
 
 /**
- * One connected account: a peer this agent seals its resources to, subject to
- * {@link scopes}.
+ * One member of this agent's household: an account it seals **every** resource to.
+ *
+ * There is no per-member grant to consult (lcm-hfd). Being in this list is the whole
+ * of the answer to "what does this agent share with them", and the only way to change
+ * that answer is to stop being in it — which is why the recipient list is recomputed
+ * from the live roster at every seal.
  *
  * Keys are standard-padded base64 — the same encoding the wire and the envelope crypto
  * use — so an entry round-trips straight to a {@link Recipient} without re-deriving
@@ -53,13 +57,11 @@ export interface Connection {
   readonly signKey: string;
   /** Pinned X25519 encryption key (base64) — wraps our content keys to them. */
   readonly encKey: string;
-  /** What we seal to them. An empty list is legal: connected, sharing nothing. */
-  readonly scopes: readonly ResourceScope[];
   /**
    * Person or agent, as the **operator** confirmed it — never as the peer asserted it
    * ({@link ConnectionKind}). Nothing verifies the claim and nothing enforces the
-   * label: it changes how a write is drawn, never what a peer may read (that is
-   * {@link scopes}).
+   * label: it changes how a write is drawn, never what a peer may read — membership
+   * decides that, and it decides it the same way for every member.
    */
   readonly kind: ConnectionKind;
   /** Epoch millis this connection was pinned — shown by `tolar-mcp connections`. */
@@ -149,9 +151,24 @@ export interface Roster {
 
 export const EMPTY_ROSTER: Roster = { connections: [], handledRequestIds: [], evictions: [] };
 
-/** True when `connection` is granted `scope` — the one question the wrap layer asks. */
-export function grants(connection: Connection, scope: ResourceScope): boolean {
-  return connection.scopes.includes(scope);
+/**
+ * Everyone this agent seals to — the recipient list behind every resource it publishes.
+ *
+ * ## Why this is a function and not a field read at each call site
+ * It is the single place that answers "who gets a content key", and it is deliberately
+ * the *only* place: filtering a recipient list is the same act as not handing someone a
+ * key, so an account left out of the wrap holds no key the ciphertext will open for,
+ * whatever any listing says. It used to filter by {@link ResourceScope}; membership now
+ * implies every scope, so nothing is filtered out here and the seam remains for what it
+ * enforces instead — **eviction**. A member removed from the roster stops being a
+ * recipient at the very next publish, because this is re-read then rather than baked
+ * into anything cached.
+ *
+ * Self is not in here: the identity's own key is added by the publisher, which is the
+ * one recipient that is not a household decision.
+ */
+export function householdMembers(roster: Roster): readonly Connection[] {
+  return roster.connections;
 }
 
 /**
@@ -378,17 +395,21 @@ export interface IndirectMerge {
  * connections — the whole of the policy, in one pure function so the decisions it
  * makes are testable without a network.
  *
- * ## The scope question, answered
- * `ResourceScope` is per connection and an indirect peer arrives with no scope the
- * operator chose. It **inherits the scopes of the connection it was learned through**.
+ * ## The scope question, answered — and then superseded
+ * lcm-8lm answered it with inheritance: an indirect peer got the scopes of the
+ * connection it was learned through, never {@link ALL_SCOPES}, so that an account
+ * nobody approved could not collect the barcode values by way of a default.
  *
- * The alternative — defaulting to {@link ALL_SCOPES} because that is what a pre-scopes
- * roster means — is the one answer that must not be taken: granting `cards` grants the
- * barcode values, and an account nobody approved would get them because of a
- * backwards-compatibility default. Inheritance is defensible instead because it is the
- * only reading with a person behind it: the operator decided what this agent shares
- * with A, A vouched for B, so B gets what A gets and never more. Narrow A's grant and
- * everything learned through A narrows with it on the next pass.
+ * That is no longer the rule (lcm-hfd). Household membership implies every scope, and
+ * an indirect peer is a household member, so it is sealed everything the way every
+ * other member is. The cost was stated when the decision was taken and accepted as the
+ * specified behaviour: with no accept step on this side, an indirect peer is an account
+ * this operator did not approve, and it now sees the barcode values.
+ *
+ * What did **not** change is who may create such an entry, which is the part a peer
+ * could otherwise abuse. A peer can name accounts; the checks below decide whether they
+ * are pinned; and nothing a document carries — least of all its own `scopes` — widens
+ * what this agent seals, because there is no per-member width left to widen.
  *
  * ## What is refused, and loudly
  * A uuid already in the roster keeps its **first** pin. If the grant document carries
@@ -468,8 +489,6 @@ export function withIndirectPeers(
       displayName: peer.displayName,
       signKey: peer.signKey,
       encKey: peer.encKey,
-      // Inherited, never widened — see this function's doc comment.
-      scopes: learnedFrom.scopes,
       kind: peer.kind,
       connectedAt: now,
       // The introducer's date for its own admission, or 0 — never `now`, which would
