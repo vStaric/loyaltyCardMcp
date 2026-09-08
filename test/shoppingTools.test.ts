@@ -8,7 +8,7 @@ import { initSodium, type SodiumCrypto } from '../src/crypto/sodium.js';
 import { shoppingTools } from '../src/mcp/shoppingTools.js';
 import type { ToolDefinition } from '../src/mcp/tool.js';
 import { ToolInputError } from '../src/mcp/tool.js';
-import type { Connection, ResourceScope } from '../src/sharing/roster.js';
+import type { Connection } from '../src/sharing/roster.js';
 import { RosterStore } from '../src/sharing/rosterStore.js';
 import { ShoppingService } from '../src/shopping/shoppingService.js';
 import { decodeShoppingSnapshotBytes } from '../src/shopping/snapshot.js';
@@ -43,16 +43,12 @@ afterEach(() => {
   for (const dir of dirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
-function connectionTo(
-  identity: Identity,
-  scopes: readonly ResourceScope[] = ['shopping'],
-): Connection {
+function connectionTo(identity: Identity): Connection {
   return {
     uuid: identity.uuid,
     displayName: 'Vid',
     signKey: Buffer.from(identity.signPublicKey).toString('base64'),
     encKey: Buffer.from(identity.encPublicKey).toString('base64'),
-    scopes,
     kind: 'person',
     connectedAt: 0,
     admittedAt: 0,
@@ -183,7 +179,7 @@ describe('list_shopping', () => {
   });
 
   it('names the connection that withheld the shopping list', async () => {
-    const { backend, call } = harness([connectionTo(user, ['cards'])]);
+    const { backend, call } = harness([connectionTo(user)]);
     publishSliceAs(backend, crypto, user, snapshot([section('s')], [item('milk', 's')]), [user]);
     const result = await call('list_shopping');
     expect(result.message).toContain('has not granted this agent the shopping list');

@@ -362,7 +362,7 @@ function unreadableHint(view: CardsView, plain: string): string {
     return (
       `${plain} This is not the whole picture: ${who} has not granted this agent the ` +
       'cards resource, so their card list is published with no key this agent can open. ' +
-      'Granting it is a checkbox on their connection in the app — nothing here can ask for it.'
+      'What they seal to this agent is decided on their own device; nothing here can ask for it.'
     );
   }
   if (view.unreadable.length > 0) {

@@ -5,7 +5,7 @@ import { afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { EnvelopeCrypto } from '../src/crypto/envelopeCrypto.js';
 import type { Identity } from '../src/crypto/identity.js';
 import { initSodium, type SodiumCrypto } from '../src/crypto/sodium.js';
-import type { Connection, ResourceScope } from '../src/sharing/roster.js';
+import type { Connection } from '../src/sharing/roster.js';
 import { RosterStore } from '../src/sharing/rosterStore.js';
 import { activeItems } from '../src/shopping/merge.js';
 import { ShoppingService, ShoppingStoreError } from '../src/shopping/shoppingService.js';
@@ -54,16 +54,12 @@ function b64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('base64');
 }
 
-function connectionTo(
-  identity: Identity,
-  scopes: readonly ResourceScope[] = ['shopping'],
-): Connection {
+function connectionTo(identity: Identity): Connection {
   return {
     uuid: identity.uuid,
     displayName: 'Vid',
     signKey: b64(identity.signPublicKey),
     encKey: b64(identity.encPublicKey),
-    scopes,
     kind: 'person',
     connectedAt: 0,
     admittedAt: 0,
@@ -116,7 +112,7 @@ describe('reading', () => {
 
   it('names the refusal when a connection withheld the shopping list', async () => {
     // Their slice is published and verifies; it simply carries no key wrapped to us.
-    const { backend, service } = harness([connectionTo(user, ['cards'])]);
+    const { backend, service } = harness([connectionTo(user)]);
     publishSliceAs(backend, crypto, user, snapshot([section('s')], [item('milk', 's')]), [user]);
     const view = await service.view();
     expect(view.list.sections).toHaveLength(0);
@@ -149,7 +145,7 @@ describe('reading', () => {
 });
 
 describe('writing', () => {
-  it('publishes our slice sealed to every connection granted the shopping list', async () => {
+  it('publishes our slice sealed to every household member', async () => {
     const { backend, service } = harness([connectionTo(user)]);
     await seed(service, 'Dairy', ['Milk']);
     const keys = Object.keys(backend.slices.get(agent.uuid)![0]!.envelope.keys);
@@ -158,10 +154,28 @@ describe('writing', () => {
     expect(publishedSlice(backend, user).items.map((i) => i.name)).toEqual(['Milk']);
   });
 
-  it('wraps no key to a connection granted only the cards', async () => {
-    const { backend, service } = harness([connectionTo(user, ['cards'])]);
+  it('wraps a key to a member who never asked for the list, because membership is the grant', async () => {
+    // lcm-hfd: there is no shopping-less member to withhold from any more. The one who
+    // would have been that member under lc-chp is sealed the slice like everyone else.
+    const other = identityOf(sodium, 6);
+    const { backend, service } = harness([
+      connectionTo(user),
+      { ...connectionTo(other), displayName: 'Never asked for a list' },
+    ]);
     await seed(service, 'Dairy', ['Milk']);
-    expect(Object.keys(backend.slices.get(agent.uuid)![0]!.envelope.keys)).toEqual([agent.uuid]);
+    const keys = Object.keys(backend.slices.get(agent.uuid)![0]!.envelope.keys).sort();
+    expect(keys).toEqual([agent.uuid, other.uuid, user.uuid].sort());
+  });
+
+  it('stops wrapping to a member the roster no longer holds', async () => {
+    // The recipient list is read from the roster at seal time and nowhere else, which
+    // is what makes that read the place an eviction takes effect.
+    const { backend, service, roster } = harness([connectionTo(user)]);
+    await seed(service, 'Dairy', ['Milk']);
+    roster.save({ connections: [], handledRequestIds: [], evictions: [] });
+    await seed(service, 'Dairy', ['Eggs']);
+    const published = backend.slices.get(agent.uuid)!;
+    expect(Object.keys(published[published.length - 1]!.envelope.keys)).toEqual([agent.uuid]);
   });
 
   it('checks off the user’s item under the user’s own item id', async () => {

@@ -1,7 +1,7 @@
 import type { EnvelopeCrypto } from '../crypto/envelopeCrypto.js';
 import type { Envelope } from '../crypto/envelope.js';
 import type { Identity } from '../crypto/identity.js';
-import { grants, signingKeyOf, toRecipient, type Connection } from '../sharing/roster.js';
+import { householdMembers, signingKeyOf, toRecipient, type Connection } from '../sharing/roster.js';
 import type { RosterStore } from '../sharing/rosterStore.js';
 import type { UnreadableReason, UnreadableSource } from '../sharing/unreadable.js';
 import { publishResource } from '../sync/publishResource.js';
@@ -259,21 +259,22 @@ export class ShoppingService {
   }
 
   /**
-   * Seal our slice to ourselves plus every connection granted the shopping list, and
-   * PUT it.
+   * Seal our slice to ourselves plus every member of the household, and PUT it.
    *
-   * This is where the scope is *enforced*, and deliberately the only place. Filtering a
-   * recipient list is the same act as not handing someone a key: a peer left out of the
+   * This is where membership is *enforced*, and deliberately the only place. Building a
+   * recipient list is the same act as handing someone a key: an account left out of the
    * wrap holds no key the ciphertext will open for, whatever any listing says.
+   *
+   * It used to be where the shopping *scope* was enforced. Membership implies every
+   * scope now (lcm-hfd), so what this reads from the roster is who is in it — which is
+   * what makes this the place **eviction** takes effect: the list is re-read at every
+   * seal, so a member who is gone by the time of the next write is not wrapped into it.
    */
   private async publish(slice: ShoppingListSnapshot): Promise<number> {
     await this.deps.ensureRegistered?.();
     const recipients = [
       { uuid: this.identity.uuid, x25519PublicKey: this.identity.encPublicKey },
-      ...this.roster
-        .load()
-        .connections.filter((c) => grants(c, 'shopping'))
-        .map(toRecipient),
+      ...householdMembers(this.roster.load()).map(toRecipient),
     ];
     return publishResource({
       crypto: this.crypto,

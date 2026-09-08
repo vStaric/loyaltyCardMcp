@@ -12,7 +12,7 @@ import {
 import { EnvelopeCrypto } from '../src/crypto/envelopeCrypto.js';
 import type { Identity } from '../src/crypto/identity.js';
 import { initSodium, type SodiumCrypto } from '../src/crypto/sodium.js';
-import type { Connection, ResourceScope } from '../src/sharing/roster.js';
+import type { Connection } from '../src/sharing/roster.js';
 import { RosterStore } from '../src/sharing/rosterStore.js';
 import { decodeCardsSnapshot } from '../src/sync/cardSnapshot.js';
 import { SyncStateStore } from '../src/sync/syncState.js';
@@ -53,16 +53,12 @@ function b64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('base64');
 }
 
-function connectionTo(
-  identity: Identity,
-  scopes: readonly ResourceScope[] = ['cards'],
-): Connection {
+function connectionTo(identity: Identity): Connection {
   return {
     uuid: identity.uuid,
     displayName: 'Vid',
     signKey: b64(identity.signPublicKey),
     encKey: b64(identity.encPublicKey),
-    scopes,
     kind: 'person',
     connectedAt: 0,
     admittedAt: 0,
@@ -183,20 +179,24 @@ describe('reading', () => {
 });
 
 describe('adding', () => {
-  it('publishes the card and seals it to every connection granted the cards scope', async () => {
+  it('publishes the card and seals it to every household member, barcode included', async () => {
+    // lcm-hfd: the member who under lc-chp was connected for the shopping list alone
+    // now gets the cards too, and the barcode value is what "the cards" means.
     const listOnly = identityOf(sodium, 5);
     const { backend, service } = harness([
-      connectionTo(user, ['cards']),
-      { ...connectionTo(listOnly, ['shopping']), displayName: 'Shopping only' },
+      connectionTo(user),
+      { ...connectionTo(listOnly), displayName: 'Connected for the list' },
     ]);
 
     const card = await service.add({ title: 'Cafe', barcodeValue: '123', barcodeFormat: 'EAN_13' });
 
     expect(card).toMatchObject({ title: 'Cafe', barcodeValue: '123', barcodeFormat: 'EAN_13' });
-    const keys = Object.keys(backend.cards.get(agent.uuid)!.envelope.keys).sort();
-    expect(keys).toEqual([agent.uuid, user.uuid].sort());
-    // A peer granted only the shopping list is not handed a key it could open.
-    expect(keys).not.toContain(listOnly.uuid);
+    const envelope = backend.cards.get(agent.uuid)!.envelope;
+    expect(Object.keys(envelope.keys).sort()).toEqual(
+      [agent.uuid, user.uuid, listOnly.uuid].sort(),
+    );
+    const plaintext = crypto.decrypt(envelope, listOnly.uuid, listOnly.encryptionKeyPair);
+    expect(Buffer.from(plaintext).toString('utf8')).toContain('123');
   });
 
   it('appends rather than replacing, and keeps sort order climbing', async () => {

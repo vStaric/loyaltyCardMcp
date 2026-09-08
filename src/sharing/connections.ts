@@ -21,7 +21,6 @@ import {
   type Connection,
   type Eviction,
   type IndirectPeer,
-  type ResourceScope,
   type SkippedPeer,
 } from './roster.js';
 import type { RosterStore } from './rosterStore.js';
@@ -87,9 +86,10 @@ export class ConnectionManager {
    *
    * "Already share with" means a **direct** connection. A request from an account this
    * agent knows only indirectly is still waiting for an answer: nobody compared its
-   * safety number, its grant is inherited rather than chosen, and accepting it is the
-   * operator's chance to set both. Hiding it because a peer vouched for the account
-   * would put the one decision this file exists to protect out of reach.
+   * safety number, and it is in the household because a peer named it rather than
+   * because the operator approved it. Accepting is that approval. Hiding the request
+   * because a peer vouched for the account would put the one decision this file exists
+   * to protect out of reach.
    */
   async pending(): Promise<readonly PendingRequest[]> {
     const view = await this.api.getRequestShare(this.identity.uuid);
@@ -123,9 +123,10 @@ export class ConnectionManager {
    * or one a household evicted and later invited back, work: their request is long since
    * marked handled, and naming its id is a deliberate act.
    *
-   * `scopes` is what **this agent** shares with them, and it defaults to everything.
-   * What they share with *us* is their decision, made on their accept screen; this
-   * cannot set it and does not pretend to.
+   * There is nothing to choose about *what* is shared: accepting is admission to the
+   * household, and a household member is sealed every resource (lcm-hfd). What they
+   * share with **us** is still their decision, made on their accept screen; this cannot
+   * set it and does not pretend to.
    */
   async accept(requestId: number, options: AcceptOptions = {}): Promise<Connection> {
     const view = await this.api.getRequestShare(this.identity.uuid);
@@ -147,7 +148,6 @@ export class ConnectionManager {
       displayName: request.displayName,
       signKey: request.signKey,
       encKey: request.encKey,
-      scopes: options.scopes ?? ALL_SCOPES,
       kind: options.kind ?? request.declaredKind,
       connectedAt: now,
       // This host's operator admitted them, just now, having compared a safety number.
@@ -601,9 +601,9 @@ export class ConnectionManager {
    * is public, so no decryption is involved. Skip it and a connection this agent has
    * in fact accepted shows as "Invited · waiting" in the app forever.
    *
-   * Sealed to every connection, cards-only and list-only alike: the grant doc is not
-   * one of the scoped resources, it is the record *of* the grant. It carries the
-   * roster's public half — uuids, names, public keys — and never card or list content.
+   * Sealed to every member: the grant doc is not one of the resources, it is the record
+   * *of* the household. It carries the roster's public half — uuids, names, public keys
+   * — and never card or list content.
    */
   async publishShareDoc(): Promise<number | null> {
     const connections = this.roster.load().connections;
@@ -656,19 +656,25 @@ export function encodeShareDoc(
    */
   evictions: readonly Eviction[] = [],
 ): string {
+  // Every entry carries every scope, because that is what this agent in fact seals to
+  // every member (lcm-hfd). The field stays on the wire — the app's `Roster.kt` reads
+  // it — but it is written from the rule rather than from anything per-member, so the
+  // document cannot say one member gets less than another while the recipient map says
+  // otherwise. A document that under-reported what it wraps keys to would be the wrong
+  // record of the grant.
+  const scopes = ALL_SCOPES.map((s) => s.toUpperCase());
   // Indirect entries are carried too. The document's job is to say who this agent
-  // seals to, and by the time it is written that is exactly the roster — a document
-  // that hid the peers it in fact wraps keys to would be the wrong record of the grant,
-  // and the app's own Connections screen is where a user notices an account they did
-  // not expect. Where the entry came from is this agent's bookkeeping and does not
-  // travel: the reader on the other side is one hop from us, whatever we are from them.
+  // seals to, and by the time it is written that is exactly the roster — and the app's
+  // own Connections screen is where a user notices an account they did not expect.
+  // Where the entry came from is this agent's bookkeeping and does not travel: the
+  // reader on the other side is one hop from us, whatever we are from them.
   return JSON.stringify({
     connections: connections.map((c) => ({
       uuid: c.uuid,
       ...(c.displayName === null ? {} : { displayName: c.displayName }),
       signKey: c.signKey,
       encKey: c.encKey,
-      scopes: c.scopes.map((s) => s.toUpperCase()),
+      scopes,
       kind: c.kind.toUpperCase(),
       // Only for the accounts *this* host admitted. An indirect entry is relayed, and
       // dating a relay with our own clock would say we admitted an account we did not —
@@ -710,9 +716,9 @@ export interface ShareDoc {
  * it so the two cannot drift.
  *
  * Every value here was chosen by *another account*, so this parses rather than trusts:
- * the scope and kind tokens are the app's uppercase enum names and anything else reads
- * as the safe default, and the keys are handed on as the strings they arrived as, for
- * {@link withIndirectPeers} to validate and name if they are unusable.
+ * the kind token is the app's uppercase enum name and anything else reads as the safe
+ * default, and the keys are handed on as the strings they arrived as, for {@link
+ * withIndirectPeers} to validate and name if they are unusable.
  *
  * An entry with no uuid at all is the one thing dropped silently — there is nothing to
  * name it by, so there is no report to make. A document that is not JSON, or whose
@@ -722,9 +728,12 @@ export interface ShareDoc {
  * document: it is the newer half of the contract, and a peer that spells it wrongly
  * must not cost this agent the peer list it spelt correctly.
  *
- * The `scopes` a document carries are **not** read. They are what that peer seals to
- * that entry, about that peer's own data; what this agent seals is decided by the
- * inheritance rule in {@link withIndirectPeers} and by nothing a peer can write.
+ * The `scopes` a document carries are **not** read, and {@link IndirectPeer} has
+ * nowhere to put them. They are what that peer seals to that entry, about that peer's
+ * own data. What this agent seals is decided by household membership (lcm-hfd) and by
+ * nothing a peer can write — the rule the scopes were carefully kept out of when they
+ * still varied, and which holds all the more now that there is no per-member width for
+ * a document to reach for.
  */
 export function decodeShareDoc(text: string): ShareDoc {
   const parsed: unknown = JSON.parse(text);
@@ -838,8 +847,6 @@ export interface PendingRequest {
 }
 
 export interface AcceptOptions {
-  /** What this agent shares with them. Defaults to both resources. */
-  readonly scopes?: readonly ResourceScope[];
   /** The label to record. Defaults to what the requester declared. */
   readonly kind?: ConnectionKind;
 }
@@ -901,7 +908,8 @@ export class ConnectedRequesterError extends Error {
             `sharing with them alone. Removing them is for a member of the household to ` +
             `do in the app; \`tolar-mcp leave\` is the other end of it and takes this ` +
             `agent out of every household. Accepting this request instead is what makes ` +
-            `them a connection in their own right, with the scopes you choose.`),
+            `them a connection in their own right, approved here rather than vouched ` +
+            `for — not a narrower share, of which there is none.`),
     );
     this.name = 'ConnectedRequesterError';
   }

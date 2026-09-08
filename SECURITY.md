@@ -32,6 +32,8 @@ mobile app.
   allowed to have one (lcm-9m7): members may kick a person or an agent out, and the agent
   is not one of them. It may only leave, and it must honour an eviction a member
   published. A way to make it drop, or keep, somebody else is a real finding
+- who ends up in the roster, and on whose say-so: key pinning, the refusal to re-pin an
+  account under new keys, and the one-hop limit on peers learnt from a grant document
 - the image cipher and blob handling
 - shopping-list and card merge, where a defect lets one peer corrupt or forge
   another peer's rows
@@ -40,6 +42,16 @@ mobile app.
 **Out of scope** — please report these elsewhere, or not at all:
 
 - the Tolar backend and the Android / iOS apps; they are separate projects
+- **household members reading each other's data.** Membership implies every scope: an
+  account this agent is connected to is sealed every resource it publishes — all cards,
+  all shopping lists, barcode values included — and that holds for a peer learnt from a
+  connection's grant document, which the operator never personally approved. It is a
+  specified decision (`lcm-hfd`), taken with the consequence stated, and the README says
+  so where it is documented. A member's control over another member is eviction, not
+  narrowing. What *is* in scope here is an account being sealed a resource **without**
+  being in this agent's roster, a peer managing to put itself or anyone else in that
+  roster other than through a verified grant document, or a key wrapped to a peer whose
+  keys this agent never pinned.
 - **the at-rest protection of `identity.json`.** It is mode `0600` in a `0700`
   directory, and that is the whole protection — deliberately, and documented in the
   README. There is no laptop equivalent of the app's hardware-backed Keystore. Anyone

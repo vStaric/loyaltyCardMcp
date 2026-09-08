@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { EnvelopeCrypto } from '../crypto/envelopeCrypto.js';
 import type { Identity } from '../crypto/identity.js';
 import { mergeCards, type MergedCard, type SharedCards } from '../merge/cardMerge.js';
-import { grants, signingKeyOf, toRecipient, type Connection } from '../sharing/roster.js';
+import { householdMembers, signingKeyOf, toRecipient, type Connection } from '../sharing/roster.js';
 import type { RosterStore } from '../sharing/rosterStore.js';
 import type { UnreadableReason, UnreadableSource } from '../sharing/unreadable.js';
 import { decodeCardsSnapshot, encodeCardsSnapshot } from '../sync/cardSnapshot.js';
@@ -308,15 +308,19 @@ export class CardService {
     }
   }
 
-  /** Seal `cards` to ourselves plus every connection granted the cards scope, and PUT it. */
+  /**
+   * Seal `cards` to ourselves plus every member of the household, and PUT it.
+   *
+   * Every member, with no per-member grant to consult (lcm-hfd) — the barcode values
+   * included, which is the whole of what a card is worth and was said plainly when the
+   * rule was decided. Like the shopping slice's publish, the recipient list is read
+   * from the roster at seal time and nowhere else, so eviction takes effect here.
+   */
   private async publish(cards: readonly Card[]): Promise<number> {
     await this.deps.ensureRegistered?.();
     const recipients = [
       { uuid: this.identity.uuid, x25519PublicKey: this.identity.encPublicKey },
-      ...this.roster
-        .load()
-        .connections.filter((c) => grants(c, 'cards'))
-        .map(toRecipient),
+      ...householdMembers(this.roster.load()).map(toRecipient),
     ];
     return publishResource({
       crypto: this.crypto,
