@@ -307,6 +307,54 @@ one the app shows.
 What the *user* shares back is set on their accept screen, not here. This agent learns it
 only by whether their envelope carries a key it can open.
 
+### Peers of peers (`lcm-8lm`)
+
+A roster built only from accepted requests holds exactly the accounts that ran the
+connect flow. That is one account, and the space is not one account: two people share a
+list, one of them adds the agent, and every envelope the agent publishes is wrapped to
+that one seat. The second person sees nothing the agent writes and cannot tell the agent
+is there at all — and not as a display bug. No key exists anywhere that would open the
+ciphertext for them.
+
+So each connection's grant document — `share/{uuid}`, the record of who *they* share
+with — is read during sync, and the accounts it names are merged into this agent's
+roster as **indirect** connections, pinned to the public keys that document carried. The
+publish path then picks them up as recipients with no change of its own: the recipient
+map written at seal time is the only thing that has ever decided visibility.
+
+The document is believed on exactly the terms a peer's card list is: fetched, verified
+against the signing key **pinned in our roster** rather than the server's live answer,
+and opened with the content key wrapped to us. A document that fails any of those is
+reported and not used, so a server that swapped a peer's key cannot hand us a roster it
+wrote and name whichever account it likes as a recipient of our cards.
+
+Three decisions are worth stating rather than leaving to be inferred:
+
+**An indirect peer inherits the scopes of the connection it was learned through.** Not
+`ALL_SCOPES` — that is what a roster written before scopes means, and taking it as the
+default here would hand the barcode values to an account nobody approved because of a
+backwards-compatibility rule. Inheritance is the only reading with a person behind it:
+the operator decided what this agent shares with A, A vouched for B, so B gets what A
+gets and never more. Narrow A's grant and everything learned through A narrows with it.
+
+**One hop.** Only direct connections' documents are read. Following an indirect peer's
+document too would let a single vouched-for account extend this agent's roster by itself,
+without bound and without anything an operator could point at.
+
+**Revoking a connection removes everything learned through it.** An indirect peer is in
+the roster because a direct connection vouched for it; tear up that grant and leaving the
+peer behind would have the agent go on sealing to an account whose only claim was the
+grant just withdrawn. A peer that some *other* connection also names comes back on the
+next pass, attributed to that one — which is the right answer and arrives by the same
+visible route as any other indirect entry.
+
+`tolar-mcp connections` marks indirect entries and names the connection each arrived
+through, because an indirect peer is an account the operator did not personally approve
+and the one thing they must not have to guess at. Their own inbound request still shows
+as waiting, too: being vouched for is not the operator comparing a safety number and
+choosing a grant, and accepting it is what turns the entry into a direct connection —
+one row that upgrades, never a second.
+
 ### Saying no (`lcm-co0`)
 
 `decline <id>` is the other answer, and it has two halves that fail differently.
@@ -339,6 +387,7 @@ in the Android repo at `docs/PRD-agent-connection.md` (§4, §6, §7).
 - `lcm-bgp` — shared merge test vectors across app and MCP (from lc-0sg)
 - `lcm-gll` — read card photo bytes (`ImageCipher` port) ✅
 - `lcm-co0` — decline/dismiss an inbound share request ✅
+- `lcm-8lm` — merge peers of peers from the verified grant doc (agent half of lc-uj5o) ✅
 
 ## License
 

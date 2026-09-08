@@ -55,6 +55,7 @@ function connectionTo(
     scopes,
     kind: 'person',
     connectedAt: 0,
+    learnedFrom: null,
   };
 }
 

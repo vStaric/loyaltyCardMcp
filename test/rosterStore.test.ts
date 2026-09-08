@@ -40,6 +40,7 @@ const connection: Connection = {
   scopes: ['cards'],
   kind: 'person',
   connectedAt: 1_800_000_000_000,
+  learnedFrom: null,
 };
 
 describe('RosterStore', () => {

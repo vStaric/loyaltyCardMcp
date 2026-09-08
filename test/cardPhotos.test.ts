@@ -63,6 +63,7 @@ const connection = (): Connection => ({
   scopes: ['cards'],
   kind: 'person',
   connectedAt: 0,
+  learnedFrom: null,
 });
 
 function harness(maxBytes?: number) {

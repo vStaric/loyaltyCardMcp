@@ -6,7 +6,8 @@ import { IdentityStore } from './crypto/identityStore.js';
 import { initSodium } from './crypto/sodium.js';
 import { serveStdio } from './mcp/server.js';
 import { TolarPeer } from './peer.js';
-import { RESOURCE_SCOPES, type ResourceScope } from './sharing/roster.js';
+import type { PeerDiscovery } from './sharing/connections.js';
+import { RESOURCE_SCOPES, type Connection, type ResourceScope } from './sharing/roster.js';
 
 /**
  * The operator-facing commands.
@@ -31,7 +32,8 @@ Usage:
 Commands:
   serve           Run the MCP server on stdio — what an MCP host launches.
   pair            Publish this agent's user row and print the invite for the app to scan.
-  connections     Show who this agent shares with, and any request waiting for an answer.
+  connections     Show who this agent shares with, refresh peers of peers, and list any
+                  request waiting for an answer.
   accept          Accept an inbound share request, after comparing its safety number.
   decline         Refuse an inbound share request: hide it here, and record the refusal.
   revoke          Stop sharing with an account and rotate this agent's keys away from it.
@@ -114,6 +116,16 @@ async function pair(overrides: Partial<PeerConfig>, noQr: boolean): Promise<numb
  */
 async function serve(overrides: Partial<PeerConfig>): Promise<number> {
   const agent = await openAgent(overrides);
+  // Learn the peers of this agent's peers before the first tool call, so a write in
+  // this session is sealed to the whole space rather than to whoever ran the connect
+  // flow (lcm-8lm). Best-effort and reported on stderr: an unreachable server is a
+  // reason to serve a smaller roster, never a reason not to serve.
+  const discovery = await agent.connections.syncPeers().catch((e: unknown) => e as Error);
+  if (discovery instanceof Error) {
+    process.stderr.write(`could not check for peers of peers: ${discovery.message}\n`);
+  } else {
+    reportDiscovery(discovery, (line) => process.stderr.write(line));
+  }
   await serveStdio(agent);
   const count = agent.roster.load().connections.length;
   process.stderr.write(
@@ -135,19 +147,42 @@ async function serve(overrides: Partial<PeerConfig>): Promise<number> {
 /** Who this agent shares with, and who is asking. */
 async function connections(overrides: Partial<PeerConfig>): Promise<number> {
   const agent = await openAgent(overrides);
+  // Refresh before listing. An operator running this command is asking who this agent
+  // shares with *now*, and an indirect peer that has joined the space since the last
+  // run is precisely the entry they most need to be shown.
+  const discovery = await agent.connections.syncPeers().catch((e: unknown) => e as Error);
   const current = agent.connections.connections();
   process.stdout.write(`Account:  ${agent.peer.identity.uuid}\n\n`);
   if (current.length === 0) {
     process.stdout.write('Connected to nobody yet.\n');
   } else {
+    const names = new Map(current.map((c) => [c.uuid, c.displayName ?? c.uuid]));
     process.stdout.write('Connected:\n');
     for (const c of current) {
       const scopes = c.scopes.length > 0 ? c.scopes.join(', ') : 'nothing';
       process.stdout.write(
-        `  ${c.displayName ?? '(unnamed)'}  ${c.uuid}\n` +
+        `  ${c.displayName ?? '(unnamed)'}  ${c.uuid}${indirectTag(c, names)}\n` +
           `    this agent shares: ${scopes}   labelled: ${c.kind}\n`,
       );
     }
+    if (current.some((c) => c.learnedFrom !== null)) {
+      process.stdout.write(
+        '\n  Entries marked "indirect" are accounts you did not accept yourself. They were\n' +
+          '  named in the grant document of the connection they are attributed to, which was\n' +
+          "  verified against that connection's pinned key before anything was added, and\n" +
+          '  this agent now seals its writes to them as well. An indirect peer is granted\n' +
+          '  exactly what the connection it was learned through is granted, never more.\n' +
+          '  Revoking that connection removes everything learned through it.\n',
+      );
+    }
+  }
+  if (discovery instanceof Error) {
+    process.stderr.write(
+      `\nCould not check for peers of peers: ${discovery.message}\n` +
+        "The list above is this agent's last known roster, which may be missing accounts.\n",
+    );
+  } else {
+    reportDiscovery(discovery, (line) => process.stdout.write(line));
   }
 
   // The roster above is local and always printable; the inbox needs the network. A
@@ -264,16 +299,66 @@ async function revoke(overrides: Partial<PeerConfig>, uuid: string | undefined):
     return 1;
   }
   const agent = await openAgent(overrides);
-  if (!(await agent.connections.revoke(uuid))) {
+  const revoked = await agent.connections.revoke(uuid);
+  if (!revoked) {
     process.stderr.write(`not connected to ${uuid}\n`);
     return 1;
   }
   process.stdout.write(
-    `Revoked ${uuid}. This agent's next publish rotates its content key away from them.\n` +
-      '\nWhat this does not do: anything they already fetched, they keep. Revoking is not\n' +
+    `Revoked ${uuid}. This agent's next publish rotates its content key away from them.\n`,
+  );
+  if (revoked.orphaned.length > 0) {
+    process.stdout.write(
+      `\nAlso removed ${revoked.orphaned.length} account(s) this agent only knew through them:\n`,
+    );
+    for (const c of revoked.orphaned) {
+      process.stdout.write(`  ${c.displayName ?? '(unnamed)'}  ${c.uuid}\n`);
+    }
+    process.stdout.write(
+      "Their only claim on this agent's keys was the connection you just revoked. If any\n" +
+        'of them is still reachable through another connection, the next `connections` run\n' +
+        'will add them back, attributed to that one.\n',
+    );
+  }
+  process.stdout.write(
+    '\nWhat this does not do: anything they already fetched, they keep. Revoking is not\n' +
       'retroactive and nothing here can make it so.\n',
   );
   return 0;
+}
+
+/** `  (indirect, via Vid)` for a peer learned from a grant document, else nothing. */
+function indirectTag(connection: Connection, names: Map<string, string>): string {
+  const via = connection.learnedFrom;
+  if (via === null) return '';
+  return `  (indirect, via ${names.get(via) ?? via})`;
+}
+
+/**
+ * Say what a discovery pass did, when it did anything worth saying.
+ *
+ * A silent pass is the normal case and prints nothing. The two that are not silent are
+ * a peer refused for a reason the operator can act on, and a connection whose grant
+ * document could not be read at all — because a roster that is quietly short is
+ * indistinguishable from a space with nobody else in it.
+ */
+function reportDiscovery(discovery: PeerDiscovery, write: (line: string) => void): void {
+  if (discovery.added.length > 0) {
+    write(`\nAdded ${discovery.added.length} account(s) learned from a connection's grant doc.\n`);
+  }
+  const refused = discovery.skipped.filter(
+    (s) => s.reason !== 'self' && s.reason !== 'already_known',
+  );
+  for (const s of refused) {
+    write(`\nNot added: ${s.displayName ?? s.uuid} (${s.reason})\n  ${s.detail}\n`);
+  }
+  for (const source of discovery.unreadable) {
+    if (source.reason === 'not_published' || source.reason === 'not_granted') continue;
+    write(
+      `\nCould not read who ${source.displayName ?? source.uuid} shares with ` +
+        `(${source.reason})\n  ${source.detail}\n`,
+    );
+  }
 }
 
 /** `--scopes cards,shopping` — what this agent shares, or undefined for the default. */
