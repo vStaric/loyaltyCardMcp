@@ -95,6 +95,7 @@ const connection = (): Connection => ({
   scopes: ['cards', 'shopping'],
   kind: 'person',
   connectedAt: 0,
+  learnedFrom: null,
 });
 
 /** The whole tool surface over one slow backend, as a session would hold it. */

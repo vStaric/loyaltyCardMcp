@@ -54,6 +54,8 @@ export class FakeBackend implements TolarApi {
   readonly shareResponses = new Map<number, Envelope>();
   /** Request ids whose decision write fails, to exercise the best-effort decline path. */
   readonly unreachableShareResponses = new Set<number>();
+  /** Accounts whose grant-document reads fail, to exercise the unreachable path. */
+  readonly unreachableShares = new Set<string>();
 
   async getUser(uuid: string): Promise<UserProfileDto | null> {
     return this.users.get(uuid) ?? null;
@@ -80,6 +82,7 @@ export class FakeBackend implements TolarApi {
   }
 
   async getShare(uuid: string): Promise<Envelope | null> {
+    if (this.unreachableShares.has(uuid)) throw new Error('backend unavailable');
     return this.shares.get(uuid)?.envelope ?? null;
   }
 
@@ -195,6 +198,68 @@ export function publishCardsAs(
   );
   backend.cards.set(author.uuid, { envelope, ver });
   return envelope;
+}
+
+/**
+ * Publish `author`'s grant document — the roster's public half — sealed to
+ * `recipients`.
+ *
+ * `peers` is written in the shape the app's `Roster.kt` serialises and the shape
+ * `encodeShareDoc` produces: uppercase scope and kind tokens. Passing a raw string
+ * instead of a peer list is how a test exercises a document that does not parse.
+ */
+export function publishShareDocAs(
+  backend: FakeBackend,
+  crypto: EnvelopeCrypto,
+  author: Identity,
+  peers: readonly ShareDocPeer[] | string,
+  recipients: readonly Identity[],
+  ver = 1,
+): Envelope {
+  const text =
+    typeof peers === 'string'
+      ? peers
+      : JSON.stringify({
+          connections: peers.map((p) => ({
+            uuid: p.uuid,
+            ...(p.displayName === undefined ? {} : { displayName: p.displayName }),
+            signKey: p.signKey,
+            encKey: p.encKey,
+            scopes: (p.scopes ?? ['CARDS', 'SHOPPING']) as readonly string[],
+            kind: p.kind ?? 'PERSON',
+          })),
+        });
+  const envelope = crypto.seal(
+    'share',
+    author.uuid,
+    ver,
+    Buffer.from(text, 'utf8'),
+    recipients.map((r) => ({ uuid: r.uuid, x25519PublicKey: r.encPublicKey })),
+    author.uuid,
+    author.signingKeyPair.secretKey,
+  );
+  backend.shares.set(author.uuid, { envelope, ver });
+  return envelope;
+}
+
+/** One entry of a grant document, as a test spells it. */
+export interface ShareDocPeer {
+  readonly uuid: string;
+  readonly displayName?: string;
+  readonly signKey: string;
+  readonly encKey: string;
+  readonly scopes?: readonly string[];
+  readonly kind?: string;
+}
+
+/** `identity` as the grant-document entry a peer would write for it. */
+export function shareDocEntry(identity: Identity, displayName: string): ShareDocPeer {
+  return {
+    uuid: identity.uuid,
+    displayName,
+    signKey: Buffer.from(identity.signPublicKey).toString('base64'),
+    encKey: Buffer.from(identity.encPublicKey).toString('base64'),
+  };
 }
 
 /** Publish `slice` as `author`'s shopping-list slice, sealed to `recipients`. */

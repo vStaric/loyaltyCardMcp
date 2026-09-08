@@ -197,6 +197,7 @@ describe('accept', () => {
           scopes: ['cards'],
           kind: 'person',
           connectedAt: 0,
+          learnedFrom: null,
         },
       ],
       handledRequestIds: [],
@@ -315,7 +316,7 @@ describe('revoke', () => {
     backend.requests = [requestFrom(user, 1)];
     await manager.accept(1);
 
-    expect(await manager.revoke(user.uuid)).toBe(true);
+    expect(await manager.revoke(user.uuid)).toMatchObject({ uuid: user.uuid, orphaned: [] });
     expect(manager.connections()).toEqual([]);
     // Two publishes: the accept, and the rotation after the revoke.
     expect(republished).toHaveLength(2);
@@ -323,7 +324,7 @@ describe('revoke', () => {
 
   it('reports a uuid it never held rather than pretending to revoke it', async () => {
     const { manager } = harness();
-    expect(await manager.revoke('nobody')).toBe(false);
+    expect(await manager.revoke('nobody')).toBeNull();
   });
 });
 
@@ -339,6 +340,7 @@ describe('the grant document', () => {
           scopes: ['cards', 'shopping'],
           kind: 'agent',
           connectedAt: 0,
+          learnedFrom: null,
         },
       ]),
     ) as { connections: Record<string, unknown>[] };
@@ -356,6 +358,7 @@ describe('the grant document', () => {
           scopes: [],
           kind: 'person',
           connectedAt: 0,
+          learnedFrom: null,
         },
       ]),
     ) as { connections: Record<string, unknown>[] };

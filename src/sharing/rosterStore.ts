@@ -5,6 +5,7 @@ import {
   ALL_SCOPES,
   EMPTY_ROSTER,
   resourceScopeFromWire,
+  withoutOrphans,
   type Connection,
   type Roster,
 } from './roster.js';
@@ -91,7 +92,11 @@ function decodeRoster(text: string, path: string): Roster {
   const handledRequestIds = (Array.isArray(o.handledRequestIds) ? o.handledRequestIds : []).filter(
     (id): id is number => typeof id === 'number' && Number.isSafeInteger(id),
   );
-  return { connections, handledRequestIds };
+  // An indirect entry is only ever as good as the connection that vouched for it, and
+  // nothing outside `withoutConnection` guarantees that connection survived whatever
+  // wrote this file. Dropping the orphans on the way in makes the invariant a property
+  // of the loaded roster rather than of every path that ever edits one.
+  return { connections: withoutOrphans(connections), handledRequestIds };
 }
 
 function decodeConnection(raw: unknown): Connection | null {
@@ -116,5 +121,9 @@ function decodeConnection(raw: unknown): Connection | null {
     scopes,
     kind: connectionKindFromWire(typeof o.kind === 'string' ? o.kind : null),
     connectedAt: typeof o.connectedAt === 'number' && o.connectedAt >= 0 ? o.connectedAt : 0,
+    // Absent means direct, which is what every roster written before lcm-8lm holds and
+    // the only safe reading of silence: an entry we cannot attribute to a peer is one
+    // the operator is presumed to have approved, not one to attribute to nobody.
+    learnedFrom: typeof o.learnedFrom === 'string' && o.learnedFrom !== '' ? o.learnedFrom : null,
   };
 }

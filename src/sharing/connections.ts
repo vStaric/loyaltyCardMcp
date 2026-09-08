@@ -1,3 +1,4 @@
+import type { Envelope } from '../crypto/envelope.js';
 import type { EnvelopeCrypto } from '../crypto/envelopeCrypto.js';
 import type { Identity } from '../crypto/identity.js';
 import { publishResource } from '../sync/publishResource.js';
@@ -8,15 +9,20 @@ import { connectionKindFromWire, type ConnectionKind } from './connectInvite.js'
 import { fingerprintOf, safetyNumber } from './keyFingerprint.js';
 import {
   ALL_SCOPES,
+  signingKeyOf,
   toRecipient,
   withConnection,
   withHandledRequest,
+  withIndirectPeers,
   withoutConnection,
   type Connection,
+  type IndirectPeer,
   type ResourceScope,
+  type SkippedPeer,
 } from './roster.js';
 import type { RosterStore } from './rosterStore.js';
 import { sealShareResponse } from './shareResponse.js';
+import type { UnreadableReason, UnreadableSource } from './unreadable.js';
 
 /** The envelope `resourceType` the roster grant document is signed under. */
 const SHARE_TYPE = 'share';
@@ -62,6 +68,12 @@ export class ConnectionManager {
    *
    * Requests we already actioned, accounts we already share with, and any stray
    * self-request are filtered out — the port of `PendingRequestFilter.visible`.
+   *
+   * "Already share with" means a **direct** connection. A request from an account this
+   * agent knows only indirectly is still waiting for an answer: nobody compared its
+   * safety number, its grant is inherited rather than chosen, and accepting it is the
+   * operator's chance to set both. Hiding it because a peer vouched for the account
+   * would put the one decision this file exists to protect out of reach.
    */
   async pending(): Promise<readonly PendingRequest[]> {
     const view = await this.api.getRequestShare(this.identity.uuid);
@@ -69,7 +81,12 @@ export class ConnectionManager {
     return view.requests
       .filter((r) => !current.handledRequestIds.includes(r.id))
       .filter((r) => r.requester.requesterUuid !== this.identity.uuid)
-      .filter((r) => !current.connections.some((c) => c.uuid === r.requester.requesterUuid))
+      .filter(
+        (r) =>
+          !current.connections.some(
+            (c) => c.uuid === r.requester.requesterUuid && c.learnedFrom === null,
+          ),
+      )
       .map((r) => toPendingRequest(r));
   }
 
@@ -115,8 +132,17 @@ export class ConnectionManager {
       scopes: options.scopes ?? ALL_SCOPES,
       kind: options.kind ?? request.declaredKind,
       connectedAt: this.deps.now?.() ?? Date.now(),
+      // The operator compared a safety number for this one. That is what direct means.
+      learnedFrom: null,
     };
     this.roster.update((r) => withHandledRequest(withConnection(r, connection), requestId));
+    // The new connection's own peers are part of the space it just joined this agent
+    // to, so they are merged before the re-publish rather than at some later sync —
+    // otherwise the first thing the agent writes is sealed to one seat of a room the
+    // operator has already opened. Best-effort: the accept is real once the roster and
+    // the grant doc say so, and a discovery that could not reach the server must not
+    // undo it. The next `connections` or `serve` picks the peers up.
+    await this.discoverPeers().catch(() => emptyDiscovery());
     await this.publishShareDoc();
     await this.onRosterChanged();
     // Answer the request where the *server* can see it, not only in our roster
@@ -170,8 +196,9 @@ export class ConnectionManager {
       throw new SelfConnectError();
     }
     const current = this.roster.load();
-    if (current.connections.some((c) => c.uuid === request.requesterUuid)) {
-      throw new ConnectedRequesterError(request.requesterUuid);
+    const connected = current.connections.find((c) => c.uuid === request.requesterUuid);
+    if (connected) {
+      throw new ConnectedRequesterError(connected.uuid, connected.learnedFrom);
     }
     // An id already marked handled was actioned before, so this is a repeat and there
     // is nothing new to record. The decision table keeps the first answer and refuses a
@@ -216,14 +243,170 @@ export class ConnectionManager {
    * What revocation does **not** do is take back what they already read. For a peer
    * that is an ordinary limit; when the revoked peer is an agent it reaches further,
    * because that plaintext went to a model provider. The CLI says so; this returns
-   * `false` for a uuid we did not hold and changes nothing.
+   * `null` for a uuid we did not hold and changes nothing.
+   *
+   * Indirect peers learned through `uuid` go with it — see {@link
+   * import('./roster.js').withoutConnection} — and are named in the result, because an
+   * operator revoking one account needs to be told which others stopped being sealed to.
    */
-  async revoke(uuid: string): Promise<boolean> {
-    if (!this.roster.load().connections.some((c) => c.uuid === uuid)) return false;
+  async revoke(uuid: string): Promise<RevokeResult | null> {
+    const before = this.roster.load().connections;
+    if (!before.some((c) => c.uuid === uuid)) return null;
+    const orphaned = before.filter((c) => c.learnedFrom === uuid);
     this.roster.update((r) => withoutConnection(r, uuid));
     await this.publishShareDoc();
     await this.onRosterChanged();
-    return true;
+    return { uuid, orphaned };
+  }
+
+  // --- peers of peers (lcm-8lm) -------------------------------------------------
+
+  /**
+   * Learn the peers of this agent's peers, and re-seal so they can actually read.
+   *
+   * ## The defect this exists for
+   * A roster built only from accepted requests holds exactly the accounts that ran the
+   * connect flow. Two people share a space, one of them connects this agent, and every
+   * resource the agent publishes is wrapped to that one account — the other sees no
+   * agent and none of its writes, and no key exists anywhere that would open the
+   * ciphertext for them. Nothing is malfunctioning; the topology is pairwise and the
+   * space is not.
+   *
+   * ## Where the peers come from, and why that source is trustworthy
+   * Each connection publishes `share/{uuid}`, the grant document that records who *they*
+   * share with. It is fetched, checked against the signing key **pinned in our roster**,
+   * and opened with the content key wrapped to us — the same three steps the card and
+   * shopping reads take, for the same reason: a server that swapped a peer's key could
+   * otherwise hand us a roster it wrote itself and name any account it liked as a
+   * recipient of our cards. A document that fails any of those is reported, not used.
+   *
+   * ## One hop, deliberately
+   * Only **direct** connections' documents are read. Following an indirect peer's
+   * document too would let one vouched-for account extend the agent's roster by itself,
+   * without bound and without anything the operator could point at; and it would make
+   * {@link import('./roster.js').withoutConnection}'s cascade a graph walk instead of
+   * one filter. Peers of peers, and no further.
+   *
+   * Nothing here throws for a peer this agent could not read. A discovery pass is
+   * additive, so a partial answer is a real answer — the sources it could not read are
+   * returned so a caller can say so rather than implying the space is smaller than it is.
+   */
+  async syncPeers(): Promise<PeerDiscovery> {
+    const discovery = await this.discoverPeers();
+    if (discovery.added.length > 0) {
+      // A roster entry seals nothing on its own: the recipient map is written at publish
+      // time, so a newly learned peer stays unable to read until the next publish. Doing
+      // it here is what makes `syncPeers` mean "they can see this agent now".
+      await this.publishShareDoc();
+      await this.onRosterChanged();
+    }
+    return discovery;
+  }
+
+  /** {@link syncPeers} without the re-publish — for callers that publish anyway. */
+  private async discoverPeers(): Promise<PeerDiscovery> {
+    const added: Connection[] = [];
+    const skipped: SkippedPeer[] = [];
+    const unreadable: UnreadableSource[] = [];
+    // Snapshot the direct connections first. Merging mutates the roster, and a peer
+    // learned in this very pass must not have its own document followed — that is the
+    // one-hop rule, and taking the list up front is how it is enforced.
+    for (const source of this.roster.load().connections.filter((c) => c.learnedFrom === null)) {
+      const peers = await this.readGrantDoc(source);
+      if ('reason' in peers) {
+        unreadable.push(peers);
+        continue;
+      }
+      const merged = withIndirectPeers(
+        this.roster.load(),
+        source,
+        peers,
+        this.identity.uuid,
+        this.deps.now?.() ?? Date.now(),
+      );
+      skipped.push(...merged.skipped);
+      if (merged.added.length === 0) continue;
+      added.push(...merged.added);
+      this.roster.update(() => merged.roster);
+    }
+    return { added, skipped, unreadable };
+  }
+
+  /**
+   * Fetch, verify and open one connection's grant document, or say why not.
+   *
+   * The refusal vocabulary is {@link UnreadableReason}, shared with the card and
+   * shopping reads because it is the same question about the same three failures —
+   * "did they not give me this, or is there nothing there?" — and a `not_granted` here
+   * is the ordinary state of a peer running a version that seals its grant doc to
+   * nobody, not an error.
+   */
+  private async readGrantDoc(
+    source: Connection,
+  ): Promise<readonly IndirectPeer[] | UnreadableSource> {
+    const refusal = (reason: UnreadableReason, detail: string): UnreadableSource => ({
+      uuid: source.uuid,
+      displayName: source.displayName,
+      reason,
+      detail,
+    });
+
+    let envelope: Envelope | null;
+    try {
+      envelope = await this.api.getShare(source.uuid);
+    } catch (e) {
+      return refusal('unreachable', `fetch failed: ${(e as Error).message}`);
+    }
+    if (!envelope) {
+      return refusal('not_published', 'this account has published no grant document yet');
+    }
+    const signature = envelope.signature;
+    if (!signature || signature.by !== source.uuid) {
+      return refusal(
+        'not_verified',
+        'the stored grant document is unsigned, or signed by someone else',
+      );
+    }
+    let signKey: Uint8Array;
+    try {
+      signKey = signingKeyOf(source);
+    } catch (e) {
+      return refusal('not_verified', (e as Error).message);
+    }
+    if (!this.crypto.verify(SHARE_TYPE, source.uuid, envelope, signKey)) {
+      return refusal(
+        'not_verified',
+        'the grant document does not verify against the key pinned for this connection',
+      );
+    }
+    if (envelope.keys[this.identity.uuid] === undefined) {
+      return refusal(
+        'not_granted',
+        'this account published its grant document with no content key wrapped to this ' +
+          'agent, so who else it shares with cannot be read, not merely not shown',
+      );
+    }
+    let plaintext: Uint8Array;
+    try {
+      plaintext = this.crypto.decrypt(
+        envelope,
+        this.identity.uuid,
+        this.identity.encryptionKeyPair,
+      );
+    } catch (e) {
+      return refusal(
+        'undecryptable',
+        `the wrapped key did not open the grant document: ${(e as Error).message}`,
+      );
+    }
+    try {
+      return decodeShareDoc(Buffer.from(plaintext).toString('utf8'));
+    } catch (e) {
+      return refusal(
+        'malformed',
+        `the grant document decrypted but did not parse: ${(e as Error).message}`,
+      );
+    }
   }
 
   /**
@@ -270,6 +453,12 @@ export class ConnectionManager {
  * one file crosses to the app, so it speaks the app's spelling.
  */
 export function encodeShareDoc(connections: readonly Connection[]): string {
+  // Indirect entries are carried too. The document's job is to say who this agent
+  // seals to, and by the time it is written that is exactly the roster — a document
+  // that hid the peers it in fact wraps keys to would be the wrong record of the grant,
+  // and the app's own Connections screen is where a user notices an account they did
+  // not expect. Where the entry came from is this agent's bookkeeping and does not
+  // travel: the reader on the other side is one hop from us, whatever we are from them.
   return JSON.stringify({
     connections: connections.map((c) => ({
       uuid: c.uuid,
@@ -280,6 +469,80 @@ export function encodeShareDoc(connections: readonly Connection[]): string {
       kind: c.kind.toUpperCase(),
     })),
   });
+}
+
+/**
+ * Read a grant document's peer list — the exact inverse of {@link encodeShareDoc}, and
+ * kept beside it so the two cannot drift.
+ *
+ * Every value here was chosen by *another account*, so this parses rather than trusts:
+ * the scope and kind tokens are the app's uppercase enum names and anything else reads
+ * as the safe default, and the keys are handed on as the strings they arrived as, for
+ * {@link withIndirectPeers} to validate and name if they are unusable.
+ *
+ * An entry with no uuid at all is the one thing dropped silently — there is nothing to
+ * name it by, so there is no report to make. A document that is not JSON, or whose
+ * `connections` is not an array, throws: that is a malformed source rather than a
+ * malformed entry, and the caller reports the whole peer as unreadable.
+ *
+ * The `scopes` a document carries are **not** read. They are what that peer seals to
+ * that entry, about that peer's own data; what this agent seals is decided by the
+ * inheritance rule in {@link withIndirectPeers} and by nothing a peer can write.
+ */
+export function decodeShareDoc(text: string): readonly IndirectPeer[] {
+  const parsed: unknown = JSON.parse(text);
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    throw new Error('a grant document must be a JSON object');
+  }
+  const raw = (parsed as Record<string, unknown>).connections;
+  if (!Array.isArray(raw)) {
+    throw new Error('a grant document must carry a `connections` array');
+  }
+  const peers: IndirectPeer[] = [];
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
+    const o = entry as Record<string, unknown>;
+    if (typeof o.uuid !== 'string' || o.uuid === '') continue;
+    peers.push({
+      uuid: o.uuid,
+      displayName: typeof o.displayName === 'string' ? o.displayName : null,
+      // Left as-is when they are not strings: an empty string is not a key, and being
+      // refused by name beats being dropped without one.
+      signKey: typeof o.signKey === 'string' ? o.signKey : '',
+      encKey: typeof o.encKey === 'string' ? o.encKey : '',
+      kind: connectionKindFromWire(typeof o.kind === 'string' ? o.kind.toLowerCase() : null),
+    });
+  }
+  return peers;
+}
+
+/** What one {@link ConnectionManager.syncPeers} pass found. */
+export interface PeerDiscovery {
+  /** Accounts newly merged into the roster, each carrying who vouched for it. */
+  readonly added: readonly Connection[];
+  /** Peers named in a document that did not become connections, and why. */
+  readonly skipped: readonly SkippedPeer[];
+  /**
+   * Connections whose grant document could not be read. Reported rather than swallowed:
+   * a pass that reached nobody looks identical to a space with no other people in it,
+   * and only one of those is worth telling an operator about.
+   */
+  readonly unreadable: readonly UnreadableSource[];
+}
+
+/** A pass that reached nothing — what a best-effort discovery falls back to. */
+function emptyDiscovery(): PeerDiscovery {
+  return { added: [], skipped: [], unreadable: [] };
+}
+
+/** What a {@link ConnectionManager.revoke} removed: the account, and its dependents. */
+export interface RevokeResult {
+  readonly uuid: string;
+  /**
+   * Indirect peers that went with it — accounts whose only claim on this agent's keys
+   * was the connection just revoked. Named so the operator sees the full blast radius.
+   */
+  readonly orphaned: readonly Connection[];
 }
 
 /** One inbound request, with the material the operator needs to judge it. */
@@ -345,10 +608,21 @@ export class NoSuchRequestError extends Error {
  * false — so stopping the sharing is a separate, deliberate act.
  */
 export class ConnectedRequesterError extends Error {
-  constructor(readonly uuid: string) {
+  constructor(
+    readonly uuid: string,
+    /** The connection they were learned through, when this agent knows them indirectly. */
+    readonly learnedFrom: string | null = null,
+  ) {
     super(
       `already sharing with ${uuid}, so declining their request would claim something ` +
-        `untrue. Stop sharing first with \`tolar-mcp revoke ${uuid}\`.`,
+        `untrue. ` +
+        (learnedFrom === null
+          ? `Stop sharing first with \`tolar-mcp revoke ${uuid}\`.`
+          : `This agent shares with them because ${learnedFrom} names them in its grant ` +
+            `document, not because anyone accepted them here — so the way to stop is ` +
+            `\`tolar-mcp revoke ${learnedFrom}\`, which removes everything learned through ` +
+            `that connection. Accepting this request instead is what makes them a ` +
+            `connection in their own right, with the scopes you choose.`),
     );
     this.name = 'ConnectedRequesterError';
   }

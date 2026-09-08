@@ -55,6 +55,7 @@ const connection = (): Connection => ({
   scopes: ['cards'],
   kind: 'person',
   connectedAt: 0,
+  learnedFrom: null,
 });
 
 function harness(connections: readonly Connection[] = [connection()]) {
