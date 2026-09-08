@@ -28,6 +28,10 @@ mobile app.
 - envelope seal / open / sign / verify, and the per-request signer
 - the identity store: file permissions, write atomicity, what it leaks on error
 - share codes, connect invites, key fingerprints, and the safety-number comparison
+- **any path by which this agent removes another account from a household.** It is not
+  allowed to have one (lcm-9m7): members may kick a person or an agent out, and the agent
+  is not one of them. It may only leave, and it must honour an eviction a member
+  published. A way to make it drop, or keep, somebody else is a real finding
 - the image cipher and blob handling
 - shopping-list and card merge, where a defect lets one peer corrupt or forge
   another peer's rows
@@ -41,8 +45,13 @@ mobile app.
   README. There is no laptop equivalent of the app's hardware-backed Keystore. Anyone
   who can already read that file is this agent. That is a known and accepted
   limitation, not a vulnerability; it is why the agent holds *its own* identity rather
-  than the user's, so the blast radius is only what was shared with it and one revoke
+  than the user's, so the blast radius is only what was shared with it and one eviction
   in the app ends it.
+- **the fact that the eviction rule is not enforced against a modified agent.** It is a
+  capability this agent does not ship, not a check anything imposes: `Connection.kind` is
+  operator-asserted and unverified, so nothing here binds a rebuilt agent or a hostile
+  reimplementation of the protocol. That limit is documented in the README and is the
+  known shape of the design, not a defect. A way for a *stock* agent to evict is in scope
 - attacks that presuppose an already-compromised host, root, or the user's own shell
 - the server learning envelope metadata it already sees by design (who published,
   when, how large) — the design assumes an honest-but-curious server that cannot read

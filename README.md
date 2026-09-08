@@ -149,7 +149,7 @@ mode `0600` in a `0700` directory.
 Android Keystore key; there is no equivalent on a laptop or a hosted box, so anyone who
 can read that file is this agent. It is a real reduction relative to the phone, and it
 is why the agent holds its own identity rather than the user's: the blast radius is
-what the user shared with this agent, and one revoke in the app ends it.
+what the user shared with this agent, and one eviction in the app ends it.
 
 ## Build and run
 
@@ -172,7 +172,7 @@ npx tolar-mcp pair              # publishes the user row, prints QR + code + saf
 npx tolar-mcp connections       # who this agent shares with, and who is asking
 npx tolar-mcp accept 7          # accept a request, after comparing its safety number
 npx tolar-mcp decline 7         # refuse one: hide it here, and tell the requester
-npx tolar-mcp revoke <uuid>     # stop sharing, and rotate the content key away
+npx tolar-mcp leave             # walk this agent out of every household it is in
 npx tolar-mcp serve             # the MCP server, on stdio — what a host launches
 npx tolar-mcp status            # account uuid and config location
 npx tolar-mcp export-phrase     # the recovery phrase — the complete backup
@@ -355,6 +355,111 @@ as waiting, too: being vouched for is not the operator comparing a safety number
 choosing a grant, and accepting it is what turns the entry into a direct connection —
 one row that upgrades, never a second.
 
+### The agent cannot evict anybody (`lcm-9m7`)
+
+People and agents are invited into a shared **household**. Everyone sees everyone, and
+any member may kick a person or an agent out. **The agent is not one of the parties that
+may** — and until this change it was: `tolar-mcp revoke <uuid>` dropped any account in
+the roster and cascade-dropped everyone the agent knew only through them.
+
+So the verb is gone. Not renamed, not moved behind a flag: there is no command, no MCP
+tool and no method on `ConnectionManager` that names an account to remove. `revoke` is
+still recognised by the CLI only so that typing it prints the reason rather than
+"unknown command", which would read as a broken install.
+
+**What is kept is leaving.** `tolar-mcp leave` walks this agent out of every household it
+is in. It takes no argument, and that is the design rather than an omission — an argument
+is exactly the shape of the capability being removed, so there is no expression in this
+program that could be pointed at somebody else. Leaving needs nobody's permission, and it
+is the operator's local off switch if a household turns out to be the wrong one.
+
+The cost is stated rather than hidden: an operator who wants out of one household but not
+another leaves both and accepts the one they are keeping again. That is the trade for
+having no verb that could ever be aimed at another member.
+
+Leaving publishes a final grant document — no connections, and one eviction naming this
+agent — sealed to the members being left, so their app can drop a member that has gone
+rather than keep one that has merely gone quiet. That half is best-effort, exactly as in
+`decline`: the local half cannot fail and happens whatever the network does, because an
+off switch that needs a server is not one. The CLI says which of the two happened.
+
+**The other half is obedience.** An eviction rides the grant document, which is already
+signed and already sealed to every member, so it needs no new resource and no new
+endpoint. When a member declares a uuid out:
+
+- the account leaves this agent's roster, and everything learned through it goes with it;
+- the next publish does not seal to it — the recipient map is rebuilt on every publish, so
+  the content key rotates away by the ordinary path;
+- an introducer whose own document still lists that account cannot bring it back. Every
+  direct connection's document is read first and the evictions are **subtracted last**, so
+  which document happened to be fetched first does not decide the answer;
+- an eviction naming *this agent* is honoured too: it leaves that household, publishes
+  nothing further to it, and `tolar-mcp connections` says so at the top rather than
+  printing a roster that looks connected.
+
+Four decisions are worth stating rather than leaving to be inferred.
+
+**The tombstone never expires.** It is persisted in `roster.json` rather than recomputed
+each pass, because the document that carried it may be unreachable on the next one, and an
+eviction forgotten the first time the network is down would resurrect the account it
+removed. Nothing garbage-collects it. The list grows with the number of accounts a
+household has ever removed, which is small, and the alternative — an eviction that expires
+— hands a still-listing introducer a window in which to re-derive the evicted peer.
+
+**A later admission outranks it, and that is how a re-invite works.** Kicked out is not
+banned for life. An eviction at time `T` removes an entry unless the admission it rests on
+is later than `T`: this host's own accept for a direct connection, and the introducer's
+published `admittedAtMillis` for an indirect one. An entry nobody dated is undated, not
+recent, and loses — silence must lose here, or every sync pass would quietly undo every
+eviction.
+
+An outranked record is kept rather than deleted — the publisher's document goes on
+carrying it, so deleting it would only mean re-reading it on the next pass — but it stops
+being *in force*, and `tolar-mcp connections` lists only the ones that are. An account
+sitting in the roster must never also be printed as removed from it; that would be two
+contradictory statements about one present, with no way to tell which to believe.
+
+**Clock skew is real and is not corrected.** `atMillis` comes from the evicting device and
+the admission time usually from another one. Whoever is ahead wins. There is no shared
+clock and no authority to appeal to, so this is named rather than papered over.
+
+**The agent relays no eviction it did not author about itself.** lc-gx2w has a member who
+reads an eviction republish it, so the removal floods the household. This agent
+deliberately does not do that half: a reader verifies the *document's* signature — ours —
+and cannot check the `by` field inside it, so a relayed eviction and an authored one are
+the same bytes to everyone downstream. Flooding would hand the agent the eviction power
+back through the door it was just taken out of. It obeys locally and publishes only its
+own departure.
+
+#### What this is, and what it is not
+
+This is **not enforcement**. `Connection.kind` is operator-asserted and, in the roster's
+own words, "nothing verifies the claim and nothing enforces the label", so a peer-side
+rule of the form "ignore evictions authored by kind=agent" is advisory and cannot survive
+a modified agent. Removing the capability here is what makes the rule true for the
+*shipping* agent, and it is worth more than the label check because it does not depend on
+anyone else's opinion of what this uuid is. It still does not bind a hostile
+reimplementation of the protocol. Option (a) in lc-gx2w, honestly labelled; option (b),
+which needs signed admission records, is a client-side change and is not this.
+
+#### The two fields this adds to the grant document
+
+Both are optional in both directions, so a peer that has neither reads and writes exactly
+as before:
+
+```jsonc
+{
+  "connections": [
+    { "uuid": "…", "signKey": "…", "encKey": "…", "scopes": ["CARDS"], "kind": "PERSON",
+      // Only on the entries the publisher admitted itself. A relayed entry is undated,
+      // because only the account that admitted somebody can date that admission.
+      "admittedAtMillis": 1800000000000 }
+  ],
+  // Omitted entirely when there are none.
+  "evictions": [ { "uuid": "…", "atMillis": 1800000000001, "by": "…" } ]
+}
+```
+
 ### Saying no (`lcm-co0`)
 
 `decline <id>` is the other answer, and it has two halves that fail differently.
@@ -373,8 +478,9 @@ the CLI reports that outcome rather than a delivered "no". Silence is never a de
 nothing here, and nothing in the app, ever collapses the two.
 
 Declining an account this agent already shares with is refused: it would tell them "no"
-while the grant document keeps saying yes. Stopping the sharing is `revoke`, and a
-separate decision.
+while the grant document keeps saying yes. Stopping the sharing is a separate decision,
+and — since this agent cannot remove anybody — it is either a member removing them in the
+app or `tolar-mcp leave`.
 
 ## Beads
 
@@ -388,6 +494,8 @@ in the Android repo at `docs/PRD-agent-connection.md` (§4, §6, §7).
 - `lcm-gll` — read card photo bytes (`ImageCipher` port) ✅
 - `lcm-co0` — decline/dismiss an inbound share request ✅
 - `lcm-8lm` — merge peers of peers from the verified grant doc (agent half of lc-uj5o) ✅
+- `lcm-9m7` — the agent cannot evict; it obeys evictions and can leave (agent half of
+  lc-gx2w) ✅
 
 ## License
 

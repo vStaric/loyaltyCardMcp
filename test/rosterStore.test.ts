@@ -40,33 +40,39 @@ const connection: Connection = {
   scopes: ['cards'],
   kind: 'person',
   connectedAt: 1_800_000_000_000,
+  admittedAt: 1_800_000_000_000,
   learnedFrom: null,
 };
 
 describe('RosterStore', () => {
   it('is empty before anything is written', () => {
-    expect(new RosterStore(tempDir()).load()).toEqual({ connections: [], handledRequestIds: [] });
+    expect(new RosterStore(tempDir()).load()).toEqual({
+      connections: [],
+      handledRequestIds: [],
+      evictions: [],
+    });
   });
 
   it('round-trips a connection', () => {
     const dir = tempDir();
-    new RosterStore(dir).save({ connections: [connection], handledRequestIds: [7] });
+    new RosterStore(dir).save({ connections: [connection], handledRequestIds: [7], evictions: [] });
     expect(new RosterStore(dir).load()).toEqual({
       connections: [connection],
       handledRequestIds: [7],
+      evictions: [],
     });
   });
 
   it('writes owner-only, in an owner-only directory', () => {
     const dir = tempDir();
-    new RosterStore(dir).save({ connections: [connection], handledRequestIds: [] });
+    new RosterStore(dir).save({ connections: [connection], handledRequestIds: [], evictions: [] });
     expect(statSync(join(dir, 'roster.json')).mode & 0o777).toBe(0o600);
   });
 
   it('replaces a connection by uuid rather than accumulating duplicates', () => {
     const dir = tempDir();
     const store = new RosterStore(dir);
-    store.save({ connections: [connection], handledRequestIds: [] });
+    store.save({ connections: [connection], handledRequestIds: [], evictions: [] });
     store.update((r) => ({
       ...r,
       connections: [{ ...connection, displayName: 'Renamed' }],
@@ -119,9 +125,11 @@ describe('RosterStore', () => {
     // The write is a temp-file rename, so a reader never sees half a roster.
     const dir = tempDir();
     const store = new RosterStore(dir);
-    store.save({ connections: [connection], handledRequestIds: [] });
+    store.save({ connections: [connection], handledRequestIds: [], evictions: [] });
     const before = readFileSync(join(dir, 'roster.json'), 'utf8');
-    expect(() => store.save({ connections: [connection], handledRequestIds: [] })).not.toThrow();
+    expect(() =>
+      store.save({ connections: [connection], handledRequestIds: [], evictions: [] }),
+    ).not.toThrow();
     expect(readFileSync(join(dir, 'roster.json'), 'utf8')).toBe(before);
   });
 });

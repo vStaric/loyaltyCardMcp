@@ -5,8 +5,10 @@ import {
   ALL_SCOPES,
   EMPTY_ROSTER,
   resourceScopeFromWire,
+  withoutEvicted,
   withoutOrphans,
   type Connection,
+  type Eviction,
   type Roster,
 } from './roster.js';
 
@@ -92,11 +94,42 @@ function decodeRoster(text: string, path: string): Roster {
   const handledRequestIds = (Array.isArray(o.handledRequestIds) ? o.handledRequestIds : []).filter(
     (id): id is number => typeof id === 'number' && Number.isSafeInteger(id),
   );
+  const evictions: Eviction[] = [];
+  for (const raw of Array.isArray(o.evictions) ? o.evictions : []) {
+    const eviction = decodeEviction(raw);
+    if (eviction) evictions.push(eviction);
+  }
+  // Two invariants of a *loaded* roster rather than of every path that ever edits one,
+  // because this is a file: it can be hand-edited, half-written, or written by a version
+  // that did not have them.
+  //
   // An indirect entry is only ever as good as the connection that vouched for it, and
-  // nothing outside `withoutConnection` guarantees that connection survived whatever
-  // wrote this file. Dropping the orphans on the way in makes the invariant a property
-  // of the loaded roster rather than of every path that ever edits one.
-  return { connections: withoutOrphans(connections), handledRequestIds };
+  // nothing outside `withoutConnection` guarantees that connection survived. And an
+  // account a household evicted must not come back by being read off disk — that is the
+  // subtract-last rule holding across a restart as well as across a sync pass (lcm-9m7).
+  return {
+    connections: withoutOrphans(withoutEvicted(connections, evictions)),
+    handledRequestIds,
+    evictions,
+  };
+}
+
+/**
+ * Parse one persisted eviction, or drop it.
+ *
+ * Unlike the wire form ({@link import('./connections.js').decodeShareDoc}) an undated
+ * record here is dropped rather than read as "now": this file is one **we** wrote, so a
+ * record with no usable time is corruption rather than an older peer's spelling, and
+ * re-dating it on every load would make the tombstone drift later than the admissions it
+ * is supposed to be compared against.
+ */
+function decodeEviction(raw: unknown): Eviction | null {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return null;
+  const o = raw as Record<string, unknown>;
+  if (typeof o.uuid !== 'string' || o.uuid === '') return null;
+  if (typeof o.at !== 'number' || !Number.isSafeInteger(o.at) || o.at < 0) return null;
+  if (typeof o.by !== 'string' || typeof o.learnedFrom !== 'string') return null;
+  return { uuid: o.uuid, at: o.at, by: o.by, learnedFrom: o.learnedFrom };
 }
 
 function decodeConnection(raw: unknown): Connection | null {
@@ -121,6 +154,17 @@ function decodeConnection(raw: unknown): Connection | null {
     scopes,
     kind: connectionKindFromWire(typeof o.kind === 'string' ? o.kind : null),
     connectedAt: typeof o.connectedAt === 'number' && o.connectedAt >= 0 ? o.connectedAt : 0,
+    // A roster written before evictions existed dates nothing, and an entry this agent
+    // cannot date is one it cannot claim outranks an eviction (lcm-9m7). For the direct
+    // connections that is no loss: they fall back to the accept this host recorded.
+    admittedAt:
+      typeof o.admittedAt === 'number' && o.admittedAt >= 0
+        ? o.admittedAt
+        : typeof o.learnedFrom === 'string' && o.learnedFrom !== ''
+          ? 0
+          : typeof o.connectedAt === 'number' && o.connectedAt >= 0
+            ? o.connectedAt
+            : 0,
     // Absent means direct, which is what every roster written before lcm-8lm holds and
     // the only safe reading of silence: an entry we cannot attribute to a peer is one
     // the operator is presumed to have approved, not one to attribute to nobody.

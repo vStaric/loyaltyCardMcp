@@ -97,7 +97,7 @@ describe('pending requests', () => {
   it('hides requests already actioned, and accounts already connected', async () => {
     const { backend, roster, manager } = harness();
     backend.requests = [requestFrom(user, 1)];
-    roster.save({ connections: [], handledRequestIds: [1] });
+    roster.save({ connections: [], handledRequestIds: [1], evictions: [] });
     expect(await manager.pending()).toEqual([]);
   });
 
@@ -149,12 +149,12 @@ describe('accept', () => {
   });
 
   it('re-accepting the same request with the same keys is a no-op, not a second peer', async () => {
-    // The path an operator takes to reconnect somebody they revoked: the request is long
-    // since marked handled, so naming its id is deliberate — and the pin still holds.
+    // The path an operator takes to reconnect a household this agent left: the request
+    // is long since marked handled, so naming its id is deliberate — and the pin holds.
     const { backend, manager } = harness();
     backend.requests = [requestFrom(user, 1)];
     await manager.accept(1);
-    await manager.revoke(user.uuid);
+    await manager.leave();
     await manager.accept(1);
     expect(manager.connections()).toHaveLength(1);
   });
@@ -197,10 +197,12 @@ describe('accept', () => {
           scopes: ['cards'],
           kind: 'person',
           connectedAt: 0,
+          admittedAt: 0,
           learnedFrom: null,
         },
       ],
       handledRequestIds: [],
+      evictions: [],
     });
     backend.requests = [
       {
@@ -310,21 +312,64 @@ describe('decline', () => {
   });
 });
 
-describe('revoke', () => {
-  it('drops the connection and re-publishes without them', async () => {
+/**
+ * Leaving (lcm-9m7) — the only removal this agent is allowed to perform, and it removes
+ * itself.
+ *
+ * The capability that used to live here, `revoke <uuid>`, is gone: it let the agent drop
+ * any account in its roster and cascade through everything learned from it, which is
+ * exactly the household eviction the spec says the agent does not have. There is no test
+ * for it below because there is no expression of it left to test — the surface is the
+ * assertion.
+ */
+describe('leave', () => {
+  it('walks out of every household and re-publishes sealing to nobody', async () => {
     const { backend, manager, republished } = harness();
     backend.requests = [requestFrom(user, 1)];
     await manager.accept(1);
 
-    expect(await manager.revoke(user.uuid)).toMatchObject({ uuid: user.uuid, orphaned: [] });
+    const result = await manager.leave();
+
+    expect(result.left.map((c) => c.uuid)).toEqual([user.uuid]);
     expect(manager.connections()).toEqual([]);
-    // Two publishes: the accept, and the rotation after the revoke.
+    // Two publishes: the accept, and the rotation after the departure.
     expect(republished).toHaveLength(2);
   });
 
-  it('reports a uuid it never held rather than pretending to revoke it', async () => {
+  it('says it is out in a final grant document the household can read', async () => {
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(user, 1)];
+    await manager.accept(1);
+
+    expect(await manager.leave()).toMatchObject({ notified: 'sent' });
+
+    const envelope = backend.shares.get(agent.uuid)!.envelope;
+    // Sealed to the people being left — a departure notice they cannot open says nothing.
+    expect(envelope.keys[user.uuid]).toBeDefined();
+    const doc = JSON.parse(
+      Buffer.from(crypto.decrypt(envelope, user.uuid, user.encryptionKeyPair)).toString('utf8'),
+    );
+    expect(doc.connections).toEqual([]);
+    expect(doc.evictions).toEqual([
+      { uuid: agent.uuid, atMillis: 1_800_000_000_000, by: agent.uuid },
+    ]);
+  });
+
+  it('leaves anyway when the departure notice cannot be published', async () => {
+    // The off switch is local, and an off switch that needs a server is not one. The
+    // result says the household was not told rather than reporting a clean exit.
+    const { backend, manager } = harness();
+    backend.requests = [requestFrom(user, 1)];
+    await manager.accept(1);
+    backend.refuseShare = true;
+
+    expect(await manager.leave()).toMatchObject({ notified: 'failed' });
+    expect(manager.connections()).toEqual([]);
+  });
+
+  it('has nothing to leave when it is in no household', async () => {
     const { manager } = harness();
-    expect(await manager.revoke('nobody')).toBeNull();
+    expect(await manager.leave()).toEqual({ left: [], notified: 'skipped' });
   });
 });
 
@@ -340,6 +385,7 @@ describe('the grant document', () => {
           scopes: ['cards', 'shopping'],
           kind: 'agent',
           connectedAt: 0,
+          admittedAt: 0,
           learnedFrom: null,
         },
       ]),
@@ -358,6 +404,7 @@ describe('the grant document', () => {
           scopes: [],
           kind: 'person',
           connectedAt: 0,
+          admittedAt: 0,
           learnedFrom: null,
         },
       ]),

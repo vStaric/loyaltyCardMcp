@@ -56,6 +56,8 @@ export class FakeBackend implements TolarApi {
   readonly unreachableShareResponses = new Set<number>();
   /** Accounts whose grant-document reads fail, to exercise the unreachable path. */
   readonly unreachableShares = new Set<string>();
+  /** Refuse every grant-document write, to exercise the best-effort departure notice. */
+  refuseShare = false;
 
   async getUser(uuid: string): Promise<UserProfileDto | null> {
     return this.users.get(uuid) ?? null;
@@ -87,6 +89,7 @@ export class FakeBackend implements TolarApi {
   }
 
   async putShare(uuid: string, envelope: Envelope): Promise<number> {
+    if (this.refuseShare) throw new Error('backend unavailable');
     return put(this.shares, uuid, envelope);
   }
 
@@ -215,6 +218,8 @@ export function publishShareDocAs(
   peers: readonly ShareDocPeer[] | string,
   recipients: readonly Identity[],
   ver = 1,
+  /** The household's evictions, as this author publishes them (lcm-9m7). */
+  evictions: readonly ShareDocEviction[] = [],
 ): Envelope {
   const text =
     typeof peers === 'string'
@@ -227,7 +232,9 @@ export function publishShareDocAs(
             encKey: p.encKey,
             scopes: (p.scopes ?? ['CARDS', 'SHOPPING']) as readonly string[],
             kind: p.kind ?? 'PERSON',
+            ...(p.admittedAtMillis === undefined ? {} : { admittedAtMillis: p.admittedAtMillis }),
           })),
+          ...(evictions.length === 0 ? {} : { evictions }),
         });
   const envelope = crypto.seal(
     'share',
@@ -250,6 +257,28 @@ export interface ShareDocPeer {
   readonly encKey: string;
   readonly scopes?: readonly string[];
   readonly kind?: string;
+  /** When the publisher says it admitted this account — omitted for a relayed entry. */
+  readonly admittedAtMillis?: number;
+}
+
+/** One eviction of a grant document, in the wire spelling the app reads and writes. */
+export interface ShareDocEviction {
+  readonly uuid: string;
+  readonly atMillis?: number;
+  readonly by?: string;
+}
+
+/**
+ * `author` declaring `target` out of the household, dated just after the moment the
+ * test harnesses admit anybody — so it outranks an ordinary accept, which is the case
+ * an eviction is for. A test about a *re-invitation* passes its own later date.
+ */
+export function evictionBy(
+  author: Identity,
+  target: Identity,
+  atMillis = 1_800_000_000_001,
+): ShareDocEviction {
+  return { uuid: target.uuid, atMillis, by: author.uuid };
 }
 
 /** `identity` as the grant-document entry a peer would write for it. */
