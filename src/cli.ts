@@ -7,7 +7,12 @@ import { initSodium } from './crypto/sodium.js';
 import { serveStdio } from './mcp/server.js';
 import { TolarPeer } from './peer.js';
 import type { PeerDiscovery } from './sharing/connections.js';
-import { RESOURCE_SCOPES, type Connection, type ResourceScope } from './sharing/roster.js';
+import {
+  RESOURCE_SCOPES,
+  type Connection,
+  type Eviction,
+  type ResourceScope,
+} from './sharing/roster.js';
 
 /**
  * The operator-facing commands.
@@ -24,7 +29,7 @@ Usage:
   tolar-mcp connections [--api-url URL] [--config-dir DIR]
   tolar-mcp accept <request-id> [--scopes cards,shopping] [--kind agent|person]
   tolar-mcp decline <request-id> [--api-url URL] [--config-dir DIR]
-  tolar-mcp revoke <uuid> [--api-url URL] [--config-dir DIR]
+  tolar-mcp leave [--api-url URL] [--config-dir DIR]
   tolar-mcp status [--config-dir DIR]
   tolar-mcp export-phrase [--config-dir DIR]
   tolar-mcp import-phrase "<twelve words …>" [--config-dir DIR]
@@ -36,7 +41,9 @@ Commands:
                   request waiting for an answer.
   accept          Accept an inbound share request, after comparing its safety number.
   decline         Refuse an inbound share request: hide it here, and record the refusal.
-  revoke          Stop sharing with an account and rotate this agent's keys away from it.
+  leave           Take this agent out of every household it is in, and tell them. It
+                  cannot take anyone else out of one — that is a member's to do, in the
+                  app. Takes no account: there is no "remove them", only "we leave".
   status          Show this agent's account uuid and where its config lives.
   export-phrase   Print the BIP-39 recovery phrase — the complete backup of this identity.
   import-phrase   Adopt an existing recovery phrase, replacing this host's identity.
@@ -70,8 +77,22 @@ async function main(argv: string[]): Promise<number> {
       return accept(overrides, positional[0], flags);
     case 'decline':
       return decline(overrides, positional[0]);
+    case 'leave':
+      return leave(overrides, positional[0]);
+    // Named so it fails with the reason rather than as an unknown command, because an
+    // operator typing it is not making a typo — they are reaching for a capability that
+    // was deliberately removed, and "unknown command" would read as a broken install
+    // (lcm-9m7).
     case 'revoke':
-      return revoke(overrides, positional[0]);
+      process.stderr.write(
+        'revoke is gone. This agent cannot remove an account from a household: members\n' +
+          'may kick a person or an agent out, and this agent is not one of the parties\n' +
+          'that may.\n\n' +
+          'To remove somebody, do it in the app, on a member’s device.\n' +
+          'To take THIS agent out, run `tolar-mcp leave` — which leaves every household\n' +
+          'it is in, and needs nobody’s permission.\n',
+      );
+      return 1;
     case 'status':
       return status(overrides.configDir ?? defaultConfigDir());
     case 'export-phrase':
@@ -153,6 +174,19 @@ async function connections(overrides: Partial<PeerConfig>): Promise<number> {
   const discovery = await agent.connections.syncPeers().catch((e: unknown) => e as Error);
   const current = agent.connections.connections();
   process.stdout.write(`Account:  ${agent.peer.identity.uuid}\n\n`);
+  // Before the roster, because it is the answer to a different question than "who is in
+  // the list": an agent a household showed the door is not connected to it, and printing
+  // an empty roster without saying why would read as "nobody ever connected" (lcm-9m7).
+  const evictedSelf = agent.connections.evictedSelf();
+  if (evictedSelf) {
+    process.stdout.write(
+      `A member of a household this agent was in declared this agent out, on\n` +
+        `${new Date(evictedSelf.at).toISOString()}. It was told by ${evictedSelf.learnedFrom}.\n` +
+        'This agent has left that household: it publishes nothing to it and seals nothing\n' +
+        'to its members. Getting back in means a fresh invitation from a member, accepted\n' +
+        'here with `tolar-mcp accept`.\n\n',
+    );
+  }
   if (current.length === 0) {
     process.stdout.write('Connected to nobody yet.\n');
   } else {
@@ -172,10 +206,13 @@ async function connections(overrides: Partial<PeerConfig>): Promise<number> {
           "  verified against that connection's pinned key before anything was added, and\n" +
           '  this agent now seals its writes to them as well. An indirect peer is granted\n' +
           '  exactly what the connection it was learned through is granted, never more.\n' +
-          '  Revoking that connection removes everything learned through it.\n',
+          '  A member of the household can remove any of them; this agent cannot.\n',
       );
     }
   }
+  reportEvictions(agent.connections.evictions(), agent.peer.identity.uuid, (line) =>
+    process.stdout.write(line),
+  );
   if (discovery instanceof Error) {
     process.stderr.write(
       `\nCould not check for peers of peers: ${discovery.message}\n` +
@@ -292,39 +329,85 @@ async function decline(
   return 1;
 }
 
-/** Stop sharing with an account, and say plainly what that does not undo. */
-async function revoke(overrides: Partial<PeerConfig>, uuid: string | undefined): Promise<number> {
-  if (!uuid) {
-    process.stderr.write('revoke needs the account uuid from `tolar-mcp connections`\n');
+/**
+ * Take this agent out of every household — the operator's off switch (lcm-9m7).
+ *
+ * The output's job is to make the direction unmistakable. `revoke <uuid>` read as "make
+ * them go away" and in fact did; this reads as "we go away" and in fact does, and the
+ * refusal below is what an operator reaching for the old verb meets instead of a
+ * connection quietly disappearing from somebody else's roster.
+ */
+async function leave(overrides: Partial<PeerConfig>, target: string | undefined): Promise<number> {
+  if (target !== undefined) {
+    process.stderr.write(
+      'leave takes no account: it takes THIS agent out, not somebody else.\n\n' +
+        'There is no command here that removes another member from a household — members\n' +
+        'may kick a person or an agent out, and this agent is not one of the parties that\n' +
+        'may. Do that in the app, on a member’s device.\n\n' +
+        'Run `tolar-mcp leave` with no argument to walk this agent out of every household\n' +
+        'it is in.\n',
+    );
     return 1;
   }
   const agent = await openAgent(overrides);
-  const revoked = await agent.connections.revoke(uuid);
-  if (!revoked) {
-    process.stderr.write(`not connected to ${uuid}\n`);
-    return 1;
+  const { left, notified } = await agent.connections.leave();
+  if (left.length === 0) {
+    process.stdout.write('This agent is in no household — nothing to leave.\n');
+    return 0;
   }
   process.stdout.write(
-    `Revoked ${uuid}. This agent's next publish rotates its content key away from them.\n`,
+    `Left. This agent shares with nobody now, and its next publish rotates its content\n` +
+      `key away from all ${left.length} account(s) it was sealing to:\n`,
   );
-  if (revoked.orphaned.length > 0) {
+  for (const c of left) {
+    process.stdout.write(`  ${c.displayName ?? '(unnamed)'}  ${c.uuid}\n`);
+  }
+  if (notified === 'sent') {
     process.stdout.write(
-      `\nAlso removed ${revoked.orphaned.length} account(s) this agent only knew through them:\n`,
+      '\nThey were told: this agent published a final grant document saying it is out, so\n' +
+        'their app can drop it rather than keep a member that has gone quiet.\n',
     );
-    for (const c of revoked.orphaned) {
-      process.stdout.write(`  ${c.displayName ?? '(unnamed)'}  ${c.uuid}\n`);
-    }
-    process.stdout.write(
-      "Their only claim on this agent's keys was the connection you just revoked. If any\n" +
-        'of them is still reachable through another connection, the next `connections` run\n' +
-        'will add them back, attributed to that one.\n',
+  } else {
+    process.stderr.write(
+      '\nCould not tell them, so their app still lists this agent as a member. That changes\n' +
+        'nothing about what is shared — this agent seals to nobody as of now — but somebody\n' +
+        'will have to remove it there by hand. Re-running `leave` will not retry it.\n',
     );
   }
   process.stdout.write(
-    '\nWhat this does not do: anything they already fetched, they keep. Revoking is not\n' +
-      'retroactive and nothing here can make it so.\n',
+    '\nWhat this does not do: anything anyone already fetched, they keep. Leaving is not\n' +
+      'retroactive and nothing here can make it so. For what this agent read, that reaches\n' +
+      'further than it would for a person — the plaintext went to a model provider.\n',
   );
-  return 0;
+  return notified === 'failed' ? 1 : 0;
+}
+
+/**
+ * List the evictions this agent is honouring (lcm-9m7), or print nothing.
+ *
+ * An account that used to be in the roster and now is not is exactly the kind of change
+ * an operator will otherwise assume is a bug in the discovery pass. Naming who declared
+ * them out, and when, is what turns "the list got shorter" into a fact about the
+ * household. The one naming this agent is printed at the top of the command instead.
+ */
+function reportEvictions(
+  evictions: readonly Eviction[],
+  selfUuid: string,
+  write: (line: string) => void,
+): void {
+  const others = evictions.filter((e) => e.uuid !== selfUuid);
+  if (others.length === 0) return;
+  write('\nDeclared out of the household, so this agent no longer seals to them:\n');
+  for (const e of others) {
+    write(
+      `  ${e.uuid}\n    by ${e.by} at ${new Date(e.at).toISOString()}, read from ${e.learnedFrom}\n`,
+    );
+  }
+  write(
+    '\n  This agent obeys these; it cannot issue one and cannot undo one. A member who\n' +
+      '  invites the account back is what brings it back — and the invitation has to be\n' +
+      '  dated later than the eviction, on clocks this agent does not control.\n',
+  );
 }
 
 /** `  (indirect, via Vid)` for a peer learned from a grant document, else nothing. */
@@ -345,6 +428,12 @@ function indirectTag(connection: Connection, names: Map<string, string>): string
 function reportDiscovery(discovery: PeerDiscovery, write: (line: string) => void): void {
   if (discovery.added.length > 0) {
     write(`\nAdded ${discovery.added.length} account(s) learned from a connection's grant doc.\n`);
+  }
+  // Never silent, on either surface. A pass that obeyed an eviction changed who this
+  // agent seals to on somebody else's say-so, which is the one change an operator is
+  // most entitled to hear about at the moment it happens (lcm-9m7).
+  for (const e of discovery.evicted) {
+    write(`\nHonoured an eviction: ${e.by} declared ${e.uuid} out, read from ${e.learnedFrom}.\n`);
   }
   const refused = discovery.skipped.filter(
     (s) => s.reason !== 'self' && s.reason !== 'already_known',

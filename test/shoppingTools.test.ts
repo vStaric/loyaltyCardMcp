@@ -55,6 +55,7 @@ function connectionTo(
     scopes,
     kind: 'person',
     connectedAt: 0,
+    admittedAt: 0,
     learnedFrom: null,
   };
 }
@@ -71,7 +72,7 @@ function harness(connections: readonly Connection[] = []): Harness {
   dirs.push(dir);
   const backend = new FakeBackend();
   const roster = new RosterStore(dir);
-  if (connections.length > 0) roster.save({ connections, handledRequestIds: [] });
+  if (connections.length > 0) roster.save({ connections, handledRequestIds: [], evictions: [] });
   let seq = 0;
   const service = new ShoppingService(agent, backend, crypto, new SyncStateStore(dir), roster, {
     now: () => 1_800_000_000_000,

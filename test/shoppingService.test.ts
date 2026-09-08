@@ -66,6 +66,7 @@ function connectionTo(
     scopes,
     kind: 'person',
     connectedAt: 0,
+    admittedAt: 0,
     learnedFrom: null,
   };
 }
@@ -81,7 +82,7 @@ function harness(connections: readonly Connection[] = [], now = () => 1_800_000_
   dirs.push(dir);
   const backend = new FakeBackend();
   const roster = new RosterStore(dir);
-  if (connections.length > 0) roster.save({ connections, handledRequestIds: [] });
+  if (connections.length > 0) roster.save({ connections, handledRequestIds: [], evictions: [] });
   let seq = 0;
   const service = new ShoppingService(agent, backend, crypto, new SyncStateStore(dir), roster, {
     now,
@@ -227,7 +228,7 @@ describe('writing', () => {
   it('rebuilds the recipient set on republish, which is what a revoke rides on', async () => {
     const { backend, service, roster } = harness([connectionTo(user)]);
     await seed(service, 'Dairy', ['Milk']);
-    roster.save({ connections: [], handledRequestIds: [] });
+    roster.save({ connections: [], handledRequestIds: [], evictions: [] });
     await service.republish();
     expect(Object.keys(backend.slices.get(agent.uuid)![0]!.envelope.keys)).toEqual([agent.uuid]);
     // The items survive the rotation: a revoke changes who can read, not what is there.

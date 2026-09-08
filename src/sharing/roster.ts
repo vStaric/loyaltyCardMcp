@@ -65,6 +65,21 @@ export interface Connection {
   /** Epoch millis this connection was pinned — shown by `tolar-mcp connections`. */
   readonly connectedAt: number;
   /**
+   * When the admission this entry rests on happened, in the clock of whoever made it —
+   * this host's for a direct connection, the introducer's for an indirect one, and `0`
+   * when nobody said (lcm-9m7).
+   *
+   * It exists for exactly one question: does an eviction outrank this entry, or does
+   * this entry outrank the eviction? A household may kick a member out and may invite
+   * them back, so the two records have to be orderable, and the only honest order is
+   * by time. `0` means unknown and loses to every eviction — the safe direction, since
+   * the cost of honouring an eviction wrongly is one re-accept and the cost of ignoring
+   * a real one is an account the household removed still being sealed to.
+   *
+   * The clock is not this agent's to correct. See {@link evicts}.
+   */
+  readonly admittedAt: number;
+  /**
    * Where this entry came from: `null` for a **direct** connection — one the operator
    * accepted by hand, after comparing a safety number — or the uuid of the direct
    * connection whose grant document named it, for an **indirect** one (lcm-8lm).
@@ -82,6 +97,35 @@ export interface Connection {
   readonly learnedFrom: string | null;
 }
 
+/**
+ * One account a household member declared out (lcm-9m7) — the record this agent
+ * **obeys** and never writes about anyone but itself.
+ *
+ * Membership in a household is derived: it is recomputed from the grant documents of
+ * direct connections on every pass, so a peer removed locally is re-derived by the
+ * next one from an introducer that still lists them. An eviction is the record that
+ * outranks that re-derivation. It travels on the grant document, which is already
+ * signed and already sealed to every member, so it needs no new resource and no new
+ * endpoint (lc-gx2w).
+ */
+export interface Eviction {
+  /** The account declared out of the household. May be this agent's own uuid. */
+  readonly uuid: string;
+  /**
+   * Epoch millis, in **the authoring device's clock** — what makes an eviction and a
+   * later re-invitation orderable ({@link evicts}). Never corrected here.
+   */
+  readonly at: number;
+  /** The account the record names as its author. A claim; see {@link learnedFrom}. */
+  readonly by: string;
+  /**
+   * The direct connection whose signed grant document carried this record — the only
+   * part of its provenance this agent verified, since the envelope's signature is over
+   * the whole document rather than over {@link by}.
+   */
+  readonly learnedFrom: string;
+}
+
 /** The persisted sharing state: who we share with, and which requests we answered. */
 export interface Roster {
   readonly connections: readonly Connection[];
@@ -91,9 +135,19 @@ export interface Roster {
    * removed server-side, keeping the inbox from re-surfacing it forever.
    */
   readonly handledRequestIds: readonly number[];
+  /**
+   * Evictions this agent has read and is honouring — the tombstones (lcm-9m7).
+   *
+   * They are persisted rather than recomputed each pass because the document that
+   * carried one may be unreachable on the next: an eviction that is forgotten the first
+   * time the network is down would resurrect the account it removed, which is the
+   * failure the record exists to prevent. They do not expire; see {@link evicts} for
+   * the only thing that lifts one.
+   */
+  readonly evictions: readonly Eviction[];
 }
 
-export const EMPTY_ROSTER: Roster = { connections: [], handledRequestIds: [] };
+export const EMPTY_ROSTER: Roster = { connections: [], handledRequestIds: [], evictions: [] };
 
 /** True when `connection` is granted `scope` — the one question the wrap layer asks. */
 export function grants(connection: Connection, scope: ResourceScope): boolean {
@@ -127,26 +181,110 @@ export function withConnection(roster: Roster, connection: Connection): Roster {
 }
 
 /**
- * Drop the connection with `uuid`, if present (revoke) — **and everything learned
- * through it**.
+ * Drop the connection with `uuid`, if present — **and everything learned through it**.
  *
  * The cascade is not tidiness. An indirect peer is in this roster because a direct
- * connection vouched for it; revoke that connection and the vouching is withdrawn, so
+ * connection vouched for it; remove that connection and the vouching is withdrawn, so
  * leaving the peer behind would have the agent go on sealing its cards to an account
- * whose only claim to them was a grant the operator just tore up — an orphan nobody
- * approved and nobody can now explain. Revoking is the one operation whose whole
- * purpose is "stop sharing with them", and it has to mean the whole subtree.
+ * whose only claim to them was a grant that no longer exists — an orphan nobody
+ * approved and nobody can now explain.
+ *
+ * ## Who is allowed to reach this
+ * Nothing on the agent's own initiative removes another member. This is reached when
+ * **this agent leaves** ({@link import('./connections.js').ConnectionManager.leave}),
+ * and when a household evicts this agent through `uuid`'s document — both of which are
+ * the agent walking out of a door, never a member being pushed through one. The old
+ * `revoke`, which let the agent remove any account it liked and take that account's
+ * whole subtree with it, is gone (lcm-9m7).
  *
  * A peer that is *also* reachable through some other connection still is: the next
  * discovery pass re-adds it, attributed to that one. That is the correct answer — it
  * was never only A's peer — and it arrives by the same visible route as any other
- * indirect entry rather than by surviving a revoke silently.
+ * indirect entry rather than by surviving silently.
  */
 export function withoutConnection(roster: Roster, uuid: string): Roster {
   return {
     ...roster,
     connections: roster.connections.filter((c) => c.uuid !== uuid && c.learnedFrom !== uuid),
   };
+}
+
+/**
+ * True when `eviction` removes `connection` — the whole of the ordering rule.
+ *
+ * A household may kick a member out and may invite them back, so an eviction cannot be
+ * permanent and cannot be conditional on nothing. It is conditional on **time**: the
+ * eviction stands unless the admission the entry rests on is later than it.
+ *
+ * ## What that means for each kind of entry
+ * For a **direct** connection, {@link Connection.admittedAt} is this host's clock at the
+ * moment its operator accepted the request. So an operator who accepts an account after
+ * a household evicted it has overruled the eviction on this host, deliberately, and the
+ * entry stands. That is the re-invite path, and it is the only one that does not depend
+ * on anybody else's clock.
+ *
+ * For an **indirect** one it is the `admittedAtMillis` the introducer published for that
+ * account, or `0` when they published none — and `0` is later than nothing, so such an
+ * entry always loses. Silence must lose here: an entry nobody dated is an entry this
+ * agent cannot show outranks an eviction, and the cost of being wrong in the other
+ * direction is sealing to an account the household removed.
+ *
+ * ## Clock skew, stated rather than hidden
+ * `at` comes from the evicting device and `admittedAt` usually from another one. Whoever
+ * is ahead wins. Nothing here corrects for that, and nothing could: there is no shared
+ * clock and no authority to appeal to. It is named in the README for the same reason.
+ */
+export function evicts(eviction: Eviction, connection: Connection): boolean {
+  return eviction.uuid === connection.uuid && connection.admittedAt <= eviction.at;
+}
+
+/**
+ * Every connection an eviction removes, removed — the **subtract-last** rule (lc-gx2w).
+ *
+ * It is a filter over the finished roster rather than a check at merge time because
+ * membership is derived: an eviction read from B's document must still remove a peer
+ * that A's document re-derived earlier in the same pass. Applied last, once, the order
+ * the documents happened to be fetched in stops mattering.
+ *
+ * It is also applied on the way in from disk ({@link import('./rosterStore.js')}), so
+ * "we do not seal to an evicted account" is a property of every loaded roster rather
+ * than of every code path that ever edits one.
+ */
+export function withoutEvicted(
+  connections: readonly Connection[],
+  evictions: readonly Eviction[],
+): readonly Connection[] {
+  if (evictions.length === 0) return connections;
+  return connections.filter((c) => !evictions.some((e) => evicts(e, c)));
+}
+
+/**
+ * Record `eviction` and apply it: the tombstone joins the roster and anything it
+ * removes leaves, including a whole subtree if the evicted account was the connection
+ * others were learned through.
+ *
+ * A second eviction of the same uuid **replaces** the one held when it is later. Two
+ * members evicting the same account is ordinary — the removal floods — and keeping the
+ * later time is what stops an older tombstone from being overruled by a re-invitation
+ * that predates the second eviction.
+ */
+export function withEviction(roster: Roster, eviction: Eviction): Roster {
+  const held = roster.evictions.find((e) => e.uuid === eviction.uuid);
+  const evictions =
+    held === undefined
+      ? [...roster.evictions, eviction]
+      : held.at >= eviction.at
+        ? roster.evictions
+        : roster.evictions.map((e) => (e.uuid === eviction.uuid ? eviction : e));
+  const removed = roster.connections.filter((c) => evicts(eviction, c));
+  let next: Roster = { ...roster, evictions };
+  for (const c of removed) next = withoutConnection(next, c.uuid);
+  return next;
+}
+
+/** The eviction held for `uuid`, or `null` — including one naming this agent itself. */
+export function evictionOf(roster: Roster, uuid: string): Eviction | null {
+  return roster.evictions.find((e) => e.uuid === uuid) ?? null;
 }
 
 /** Mark inbound request `id` as actioned so the inbox stops offering it. */
@@ -195,6 +333,13 @@ export interface IndirectPeer {
   readonly encKey: string;
   /** What the vouching peer labelled them. A relayed claim; see {@link Connection.kind}. */
   readonly kind: ConnectionKind;
+  /**
+   * When the vouching peer says **it** admitted this account, or `0` when its document
+   * carried no date for the entry (lcm-9m7). Only the introducer can date its own
+   * admission, so this travels only on the entries a publisher admitted directly; a
+   * relayed entry arrives undated, which is the honest answer.
+   */
+  readonly admittedAt: number;
 }
 
 /** Why one peer named in a grant document did not become a connection. */
@@ -206,7 +351,9 @@ export type IndirectSkipReason =
   /** Already in the roster under **different** keys. Never silently re-pinned. */
   | 'key_mismatch'
   /** `signKey` or `encKey` is not 32 bytes of real base64. */
-  | 'malformed_key';
+  | 'malformed_key'
+  /** A household evicted them, and nothing dates their admission later than that. */
+  | 'evicted';
 
 /** One refused peer, with enough to say which entry and why. */
 export interface SkippedPeer {
@@ -281,8 +428,8 @@ export function withIndirectPeers(
         skip(
           'key_mismatch',
           `${learnedFrom.uuid} names ${peer.uuid} under different keys than the ones pinned ` +
-            'here — refusing to re-pin. Revoke the existing connection first if this really ' +
-            'is the same account with new keys.',
+            'here — refusing to re-pin. A key change has to arrive as a request this ' +
+            'agent’s operator accepts, not as a line in somebody else’s document.',
         );
       } else {
         skip(
@@ -299,6 +446,23 @@ export function withIndirectPeers(
       skip('malformed_key', badKey);
       continue;
     }
+    // The same test {@link evicts} makes, on an entry that does not exist yet.
+    const eviction = next.evictions.find((e) => e.uuid === peer.uuid && peer.admittedAt <= e.at);
+    if (eviction) {
+      // Named rather than merged-then-subtracted, so the operator sees why a peer the
+      // introducer still lists is not in the roster. The subtraction happens anyway at
+      // the end of the pass ({@link withoutEvicted}) for the evictions this pass is
+      // about to read; this branch is the ones already held.
+      skip(
+        'evicted',
+        `${eviction.by} declared ${peer.uuid} out of the household, and ` +
+          (peer.admittedAt === 0
+            ? `${learnedFrom.uuid} publishes no date for admitting them, so nothing here ` +
+              'outranks that record'
+            : `${learnedFrom.uuid} dates their admission no later than it`),
+      );
+      continue;
+    }
     const connection: Connection = {
       uuid: peer.uuid,
       displayName: peer.displayName,
@@ -308,6 +472,9 @@ export function withIndirectPeers(
       scopes: learnedFrom.scopes,
       kind: peer.kind,
       connectedAt: now,
+      // The introducer's date for its own admission, or 0 — never `now`, which would
+      // date every re-derivation later than every eviction and quietly undo all of them.
+      admittedAt: peer.admittedAt,
       learnedFrom: learnedFrom.uuid,
     };
     next = withConnection(next, connection);
@@ -319,8 +486,8 @@ export function withIndirectPeers(
 /**
  * Every indirect entry whose vouching connection is missing from `connections`, removed.
  *
- * {@link withoutConnection} keeps that invariant on the revoke path, but the roster is
- * a file: a hand edit, a partial write, or a roster written by some future version can
+ * {@link withoutConnection} keeps that invariant wherever a connection leaves, but the
+ * roster is a file: a hand edit, a partial write, or a roster written by some future version can
  * still present an orphan — an account this agent would seal to with nothing left to
  * explain why. One pass suffices, because indirect entries are only ever learned from
  * **direct** connections, so orphaning does not chain.

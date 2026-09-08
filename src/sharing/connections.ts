@@ -9,13 +9,17 @@ import { connectionKindFromWire, type ConnectionKind } from './connectInvite.js'
 import { fingerprintOf, safetyNumber } from './keyFingerprint.js';
 import {
   ALL_SCOPES,
+  evictionOf,
   signingKeyOf,
   toRecipient,
   withConnection,
+  withEviction,
   withHandledRequest,
   withIndirectPeers,
   withoutConnection,
+  withoutEvicted,
   type Connection,
+  type Eviction,
   type IndirectPeer,
   type ResourceScope,
   type SkippedPeer,
@@ -37,9 +41,21 @@ const SHARE_TYPE = 'share';
  * to the requester, so an agent that could accept its own connections would be one
  * prompt-injection away from sharing its cards with whoever asked. Nothing in this
  * file is exposed over MCP; it is reached through `tolar-mcp connections` / `accept` /
- * `revoke`, by the person who set the agent up. That person is also the only one who
+ * `leave`, by the person who set the agent up. That person is also the only one who
  * can do the part that carries the trust — comparing the safety number against the one
  * the app is showing.
+ *
+ * ## Why there is no way to remove somebody else
+ * A household is a group of people and agents who all see each other, and its members
+ * may kick a member out. **This agent is not one of the parties that may** (lc-gx2w).
+ * Until lcm-9m7 it was: `revoke <uuid>` dropped any account in the roster and took
+ * everything learned through it along, which is exactly the capability the spec denies
+ * it. So the verb is gone rather than renamed, and what replaces it is {@link leave} —
+ * the agent walking out, which needs nobody's permission and is the operator's local
+ * off switch if a household turns out to be the wrong one.
+ *
+ * The other half is {@link syncPeers}: an eviction a member publishes is **obeyed**
+ * here. The agent honours evictions and issues none.
  */
 export class ConnectionManager {
   constructor(
@@ -50,9 +66,9 @@ export class ConnectionManager {
     private readonly roster: RosterStore,
     /**
      * Re-publish the resources this agent shares, after the roster changes. Accepting
-     * re-wraps the content key to the new peer; revoking mints a fresh one and does not
-     * wrap it to them (best-effort forward secrecy — what they already fetched cannot
-     * be un-fetched).
+     * re-wraps the content key to the new peer; a departure or an eviction mints a fresh
+     * one and does not wrap it to them (best-effort forward secrecy — what they already
+     * fetched cannot be un-fetched).
      */
     private readonly onRosterChanged: () => Promise<unknown> = async () => undefined,
     private readonly deps: { readonly now?: () => number } = {},
@@ -103,8 +119,9 @@ export class ConnectionManager {
    * This reads the **raw** inbox rather than {@link pending}. That filter decides what
    * to show an operator; this decides who gets our keys, and a display rule is the wrong
    * thing for an authorisation check to lean on — a request re-offered by a hidden path
-   * must still meet the pin. It is also what makes re-accepting a peer you revoked work:
-   * their request is long since marked handled, and naming its id is a deliberate act.
+   * must still meet the pin. It is also what makes re-accepting a peer this agent left,
+   * or one a household evicted and later invited back, work: their request is long since
+   * marked handled, and naming its id is a deliberate act.
    *
    * `scopes` is what **this agent** shares with them, and it defaults to everything.
    * What they share with *us* is their decision, made on their accept screen; this
@@ -124,6 +141,7 @@ export class ConnectionManager {
     if (existing && (existing.signKey !== request.signKey || existing.encKey !== request.encKey)) {
       throw new ConnectionKeyMismatchError(request.requesterUuid);
     }
+    const now = this.deps.now?.() ?? Date.now();
     const connection: Connection = {
       uuid: request.requesterUuid,
       displayName: request.displayName,
@@ -131,7 +149,11 @@ export class ConnectionManager {
       encKey: request.encKey,
       scopes: options.scopes ?? ALL_SCOPES,
       kind: options.kind ?? request.declaredKind,
-      connectedAt: this.deps.now?.() ?? Date.now(),
+      connectedAt: now,
+      // This host's operator admitted them, just now, having compared a safety number.
+      // That act is what an eviction older than it is measured against, and it is the
+      // one admission this agent can date from a clock it owns (lcm-9m7).
+      admittedAt: now,
       // The operator compared a safety number for this one. That is what direct means.
       learnedFrom: null,
     };
@@ -238,25 +260,117 @@ export class ConnectionManager {
   }
 
   /**
-   * Stop sharing with `uuid`, and rotate this agent's content keys away from them.
+   * Walk out: this agent leaves every household it is in (lcm-9m7).
    *
-   * What revocation does **not** do is take back what they already read. For a peer
-   * that is an ordinary limit; when the revoked peer is an agent it reaches further,
-   * because that plaintext went to a model provider. The CLI says so; this returns
-   * `null` for a uuid we did not hold and changes nothing.
+   * ## Why this takes no argument
+   * A uuid parameter is exactly the shape of the capability the spec denies this agent.
+   * Members of a household may remove a member; the agent may not, and the cheapest way
+   * to make that true of the shipping agent — rather than true of a rule somebody could
+   * edit out — is for there to be no expression in the CLI or in this class that names
+   * an account to remove. What is left is a door the agent can only walk out of itself,
+   * which is nobody's business but the operator's and needs no permission.
    *
-   * Indirect peers learned through `uuid` go with it — see {@link
-   * import('./roster.js').withoutConnection} — and are named in the result, because an
-   * operator revoking one account needs to be told which others stopped being sealed to.
+   * The cost is real and is stated in the README: an operator who wants out of one
+   * household but not another leaves both and accepts the one they are keeping again.
+   * That is the trade for having no verb that could ever be pointed at somebody else.
+   *
+   * ## Two halves, and only one of them can fail
+   * The local half — the roster is emptied and the next publish seals to nobody — cannot
+   * fail and happens whatever the network does. That matters: this is the operator's off
+   * switch, and an off switch that needs a server is not one.
+   *
+   * The notice is best-effort, exactly as in {@link decline}. It is a final grant
+   * document sealed to the members being left, carrying no connections and one eviction
+   * naming **this agent** — the only eviction this agent ever authors, and the one the
+   * household needs in order to drop it rather than keep a member that has gone quiet.
+   * The result says which of the two happened rather than reporting a clean departure
+   * that nobody was told about.
+   *
+   * What leaving does **not** do is take back what anyone already read. For a peer that
+   * is an ordinary limit; here it reaches further, because that plaintext went to a model
+   * provider. The CLI says so.
    */
-  async revoke(uuid: string): Promise<RevokeResult | null> {
-    const before = this.roster.load().connections;
-    if (!before.some((c) => c.uuid === uuid)) return null;
-    const orphaned = before.filter((c) => c.learnedFrom === uuid);
-    this.roster.update((r) => withoutConnection(r, uuid));
-    await this.publishShareDoc();
+  async leave(): Promise<LeaveResult> {
+    const left = this.roster.load().connections;
+    if (left.length === 0) return { left: [], notified: 'skipped' };
+    const at = this.deps.now?.() ?? Date.now();
+    const notified = await this.publishDeparture(left, at);
+    this.roster.update((r) => ({ ...r, connections: [] }));
     await this.onRosterChanged();
-    return { uuid, orphaned };
+    return { left, notified };
+  }
+
+  /**
+   * Publish the final grant document that says this agent is out. Never throws.
+   *
+   * Sealed to the members being left, because a document they cannot open tells them
+   * nothing; and published **before** the roster is emptied, since they are the
+   * recipients. The body carries no connections — this agent shares with nobody as of
+   * now — and the departure record.
+   */
+  private async publishDeparture(
+    left: readonly Connection[],
+    at: number,
+  ): Promise<'sent' | 'failed'> {
+    const departure: Eviction = {
+      uuid: this.identity.uuid,
+      at,
+      by: this.identity.uuid,
+      learnedFrom: this.identity.uuid,
+    };
+    try {
+      await publishResource({
+        crypto: this.crypto,
+        identity: this.identity,
+        state: this.state,
+        resourceType: SHARE_TYPE,
+        resourceId: this.identity.uuid,
+        storeKey: RESOURCE_SHARE,
+        plaintext: Buffer.from(encodeShareDoc([], [departure]), 'utf8'),
+        recipients: [
+          { uuid: this.identity.uuid, x25519PublicKey: this.identity.encPublicKey },
+          ...left.map(toRecipient),
+        ],
+        put: (envelope) => this.api.putShare(this.identity.uuid, envelope),
+        remoteVer: async () => (await this.api.getShare(this.identity.uuid))?.signature?.ver ?? 0,
+      });
+      return 'sent';
+    } catch {
+      return 'failed';
+    }
+  }
+
+  /**
+   * The evictions this agent is honouring **right now**, including any naming the agent
+   * itself.
+   *
+   * Not every record it holds. A tombstone is kept once read and is re-read from the
+   * publisher's document on every pass — the document goes on saying it — but it stops
+   * being *in force* the moment something later outranks it: the operator accepting that
+   * account here, or an introducer dating their admission after it. The roster is the
+   * outcome of that comparison, so this reads the answer off the roster rather than
+   * re-deriving it.
+   *
+   * The distinction is what `tolar-mcp connections` needs. Printing a held record for an
+   * account that is sitting in the list above it would be two contradictory statements
+   * about one present, and the operator has no way to tell which one to believe.
+   */
+  evictions(): readonly Eviction[] {
+    const roster = this.roster.load();
+    const connected = (uuid: string): boolean => roster.connections.some((c) => c.uuid === uuid);
+    return roster.evictions.filter((e) =>
+      // An eviction naming this agent is in force while this agent is out of that
+      // household, and the member who told us is how that household is named here.
+      e.uuid === this.identity.uuid ? !connected(e.learnedFrom) : !connected(e.uuid),
+    );
+  }
+
+  /**
+   * The eviction that has this agent out of a household, or `null` — what
+   * `tolar-mcp connections` prints instead of letting the agent look connected.
+   */
+  evictedSelf(): Eviction | null {
+    return this.evictions().find((e) => e.uuid === this.identity.uuid) ?? null;
   }
 
   // --- peers of peers (lcm-8lm) -------------------------------------------------
@@ -287,13 +401,19 @@ export class ConnectionManager {
    * {@link import('./roster.js').withoutConnection}'s cascade a graph walk instead of
    * one filter. Peers of peers, and no further.
    *
+   * ## It is also where evictions are obeyed (lcm-9m7)
+   * The same documents carry the household's evictions, and this is the pass that
+   * honours them: an evicted account leaves the roster and stops being sealed to, and an
+   * eviction naming **this agent** is a household showing it the door, which it takes by
+   * leaving that household rather than by going on publishing to it.
+   *
    * Nothing here throws for a peer this agent could not read. A discovery pass is
    * additive, so a partial answer is a real answer — the sources it could not read are
    * returned so a caller can say so rather than implying the space is smaller than it is.
    */
   async syncPeers(): Promise<PeerDiscovery> {
     const discovery = await this.discoverPeers();
-    if (discovery.added.length > 0) {
+    if (discovery.added.length > 0 || discovery.evicted.length > 0) {
       // A roster entry seals nothing on its own: the recipient map is written at publish
       // time, so a newly learned peer stays unable to read until the next publish. Doing
       // it here is what makes `syncPeers` mean "they can see this agent now".
@@ -303,33 +423,99 @@ export class ConnectionManager {
     return discovery;
   }
 
-  /** {@link syncPeers} without the re-publish — for callers that publish anyway. */
+  /**
+   * {@link syncPeers} without the re-publish — for callers that publish anyway.
+   *
+   * Three phases, and the order is the design rather than an implementation detail.
+   * **Read** every direct connection's document first; then apply the **evictions** they
+   * carry; then **merge** the peers they name, and subtract once more at the end.
+   *
+   * That last "once more" is the subtract-last rule lc-gx2w specifies, and it is what a
+   * derived membership needs in order to be evictable at all: A's document may still
+   * list an account B's document declares out, and whichever happened to be fetched
+   * first must not decide the answer. Reading everything before writing anything is how
+   * the fetch order stops mattering.
+   */
   private async discoverPeers(): Promise<PeerDiscovery> {
     const added: Connection[] = [];
     const skipped: SkippedPeer[] = [];
     const unreadable: UnreadableSource[] = [];
+    const now = this.deps.now?.() ?? Date.now();
     // Snapshot the direct connections first. Merging mutates the roster, and a peer
     // learned in this very pass must not have its own document followed — that is the
     // one-hop rule, and taking the list up front is how it is enforced.
-    for (const source of this.roster.load().connections.filter((c) => c.learnedFrom === null)) {
-      const peers = await this.readGrantDoc(source);
-      if ('reason' in peers) {
-        unreadable.push(peers);
+    const sources = this.roster.load().connections.filter((c) => c.learnedFrom === null);
+    const documents: { source: Connection; doc: ShareDoc }[] = [];
+    for (const source of sources) {
+      const doc = await this.readGrantDoc(source);
+      if ('reason' in doc) {
+        unreadable.push(doc);
         continue;
       }
+      documents.push({ source, doc });
+    }
+
+    const evicted: Eviction[] = [];
+    for (const { source, doc } of documents) {
+      for (const record of doc.evictions) {
+        const eviction: Eviction = {
+          uuid: record.uuid,
+          // An undated record is read as "now" rather than discarded. The two ways of
+          // being wrong are not symmetric: honouring an eviction that should not have
+          // applied costs one re-accept, and ignoring a real one leaves an account the
+          // household removed still being sealed to — the failure the record exists for.
+          at: record.at ?? now,
+          by: record.by ?? source.uuid,
+          learnedFrom: source.uuid,
+        };
+        const before = this.roster.load();
+        const applied = withEviction(before, eviction);
+        // An eviction naming this agent is the household showing it the door. No entry in
+        // our own roster carries our uuid, so the door has to be walked out of
+        // explicitly: the connection that told us goes, and everything learned through it
+        // goes with it. Unless the operator accepted that connection *after* the
+        // eviction, which is a re-invitation and outranks it, exactly as for any peer.
+        const next =
+          eviction.uuid === this.identity.uuid && source.admittedAt <= eviction.at
+            ? withoutConnection(applied, source.uuid)
+            : applied;
+        // A record this agent has already obeyed is read again on every pass, because the
+        // document that carries it does not go away. Only a real change is written and
+        // reported: otherwise every pass would re-publish and every `connections` run
+        // would announce an eviction that happened once, days ago.
+        const changed =
+          next.connections.length !== before.connections.length ||
+          next.evictions.length !== before.evictions.length ||
+          evictionOf(before, eviction.uuid)?.at !== evictionOf(next, eviction.uuid)?.at;
+        if (!changed) continue;
+        this.roster.save(next);
+        evicted.push(eviction);
+      }
+    }
+
+    for (const { source, doc } of documents) {
+      // The source may have gone in the phase above: it carried an eviction naming this
+      // agent, or another member evicted it. A household this agent has left, or a
+      // member the household removed, teaches it nothing.
+      if (!this.roster.load().connections.some((c) => c.uuid === source.uuid)) continue;
       const merged = withIndirectPeers(
         this.roster.load(),
         source,
-        peers,
+        doc.peers,
         this.identity.uuid,
-        this.deps.now?.() ?? Date.now(),
+        now,
       );
       skipped.push(...merged.skipped);
       if (merged.added.length === 0) continue;
       added.push(...merged.added);
       this.roster.update(() => merged.roster);
     }
-    return { added, skipped, unreadable };
+
+    // Subtract last. Everything above merged from documents that can disagree with each
+    // other; this is the line that decides which side of the disagreement wins.
+    this.roster.update((r) => ({ ...r, connections: withoutEvicted(r.connections, r.evictions) }));
+    const survived = new Set(this.roster.load().connections.map((c) => c.uuid));
+    return { added: added.filter((c) => survived.has(c.uuid)), skipped, unreadable, evicted };
   }
 
   /**
@@ -341,9 +527,7 @@ export class ConnectionManager {
    * is the ordinary state of a peer running a version that seals its grant doc to
    * nobody, not an error.
    */
-  private async readGrantDoc(
-    source: Connection,
-  ): Promise<readonly IndirectPeer[] | UnreadableSource> {
+  private async readGrantDoc(source: Connection): Promise<ShareDoc | UnreadableSource> {
     const refusal = (reason: UnreadableReason, detail: string): UnreadableSource => ({
       uuid: source.uuid,
       displayName: source.displayName,
@@ -452,7 +636,26 @@ export class ConnectionManager {
  * this document. Everything else about this peer's roster is its own business, but this
  * one file crosses to the app, so it speaks the app's spelling.
  */
-export function encodeShareDoc(connections: readonly Connection[]): string {
+export function encodeShareDoc(
+  connections: readonly Connection[],
+  /**
+   * Evictions to carry. In practice this is only ever **this agent's own departure**,
+   * written by {@link ConnectionManager.leave} and by nothing else.
+   *
+   * ## Why the agent never relays somebody else's eviction
+   * lc-gx2w has a member who reads an eviction republish it, so the removal floods the
+   * household instead of being one device's private opinion. This agent deliberately
+   * does not do that half. A reader verifies the *document's* signature — ours — and
+   * has no way to check the `by` field inside it, so a relayed eviction and an authored
+   * one are the same bytes to everyone downstream. Flooding would hand the agent the
+   * eviction power through the back door, three lines after the front door was removed.
+   *
+   * So the agent obeys evictions locally and republishes none of them. The cost is that
+   * it is not a relay hop for the flood; every member's own document carries the record
+   * to every member it shares with, which is where the flooding lc-gx2w wants comes from.
+   */
+  evictions: readonly Eviction[] = [],
+): string {
   // Indirect entries are carried too. The document's job is to say who this agent
   // seals to, and by the time it is written that is exactly the roster — a document
   // that hid the peers it in fact wraps keys to would be the wrong record of the grant,
@@ -467,13 +670,44 @@ export function encodeShareDoc(connections: readonly Connection[]): string {
       encKey: c.encKey,
       scopes: c.scopes.map((s) => s.toUpperCase()),
       kind: c.kind.toUpperCase(),
+      // Only for the accounts *this* host admitted. An indirect entry is relayed, and
+      // dating a relay with our own clock would say we admitted an account we did not —
+      // and would let every re-derivation outrank every eviction. Undated is the honest
+      // answer for a peer we were merely told about (lcm-9m7).
+      ...(c.learnedFrom === null ? { admittedAtMillis: c.admittedAt } : {}),
     })),
+    // Omitted entirely when there are none, so an ordinary document stays byte-identical
+    // to the one this agent has always written.
+    ...(evictions.length === 0
+      ? {}
+      : { evictions: evictions.map((e) => ({ uuid: e.uuid, atMillis: e.at, by: e.by })) }),
   });
 }
 
 /**
- * Read a grant document's peer list — the exact inverse of {@link encodeShareDoc}, and
- * kept beside it so the two cannot drift.
+ * One eviction exactly as a grant document spelt it — a claim relayed by a peer, with
+ * the two fields that may be missing left missing rather than filled in here.
+ *
+ * `at` is `null` for a record carrying no readable `atMillis`, and the caller decides
+ * what an undated eviction means; see {@link ConnectionManager.syncPeers}. `by` is
+ * `null` when the document did not say who authored it, which is a claim in any case —
+ * the signature covers the document, not the field.
+ */
+export interface ShareDocEviction {
+  readonly uuid: string;
+  readonly at: number | null;
+  readonly by: string | null;
+}
+
+/** A grant document as read: who that account shares with, and who it says is out. */
+export interface ShareDoc {
+  readonly peers: readonly IndirectPeer[];
+  readonly evictions: readonly ShareDocEviction[];
+}
+
+/**
+ * Read a grant document — the exact inverse of {@link encodeShareDoc}, and kept beside
+ * it so the two cannot drift.
  *
  * Every value here was chosen by *another account*, so this parses rather than trusts:
  * the scope and kind tokens are the app's uppercase enum names and anything else reads
@@ -483,18 +717,22 @@ export function encodeShareDoc(connections: readonly Connection[]): string {
  * An entry with no uuid at all is the one thing dropped silently — there is nothing to
  * name it by, so there is no report to make. A document that is not JSON, or whose
  * `connections` is not an array, throws: that is a malformed source rather than a
- * malformed entry, and the caller reports the whole peer as unreadable.
+ * malformed entry, and the caller reports the whole peer as unreadable. An `evictions`
+ * field that is not an array is read as no evictions rather than as a malformed
+ * document: it is the newer half of the contract, and a peer that spells it wrongly
+ * must not cost this agent the peer list it spelt correctly.
  *
  * The `scopes` a document carries are **not** read. They are what that peer seals to
  * that entry, about that peer's own data; what this agent seals is decided by the
  * inheritance rule in {@link withIndirectPeers} and by nothing a peer can write.
  */
-export function decodeShareDoc(text: string): readonly IndirectPeer[] {
+export function decodeShareDoc(text: string): ShareDoc {
   const parsed: unknown = JSON.parse(text);
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
     throw new Error('a grant document must be a JSON object');
   }
-  const raw = (parsed as Record<string, unknown>).connections;
+  const doc = parsed as Record<string, unknown>;
+  const raw = doc.connections;
   if (!Array.isArray(raw)) {
     throw new Error('a grant document must carry a `connections` array');
   }
@@ -511,9 +749,29 @@ export function decodeShareDoc(text: string): readonly IndirectPeer[] {
       signKey: typeof o.signKey === 'string' ? o.signKey : '',
       encKey: typeof o.encKey === 'string' ? o.encKey : '',
       kind: connectionKindFromWire(typeof o.kind === 'string' ? o.kind.toLowerCase() : null),
+      // Absent from every document written before evictions existed, and absent from the
+      // relayed entries of every document written since. Unknown, not now: see
+      // {@link import('./roster.js').evicts}.
+      admittedAt: readMillis(o.admittedAtMillis) ?? 0,
     });
   }
-  return peers;
+  const evictions: ShareDocEviction[] = [];
+  for (const entry of Array.isArray(doc.evictions) ? doc.evictions : []) {
+    if (typeof entry !== 'object' || entry === null || Array.isArray(entry)) continue;
+    const o = entry as Record<string, unknown>;
+    if (typeof o.uuid !== 'string' || o.uuid === '') continue;
+    evictions.push({
+      uuid: o.uuid,
+      at: readMillis(o.atMillis),
+      by: typeof o.by === 'string' && o.by !== '' ? o.by : null,
+    });
+  }
+  return { peers, evictions };
+}
+
+/** Epoch millis a peer wrote, or `null` for anything that is not a usable one. */
+function readMillis(raw: unknown): number | null {
+  return typeof raw === 'number' && Number.isSafeInteger(raw) && raw >= 0 ? raw : null;
 }
 
 /** What one {@link ConnectionManager.syncPeers} pass found. */
@@ -528,21 +786,35 @@ export interface PeerDiscovery {
    * and only one of those is worth telling an operator about.
    */
   readonly unreadable: readonly UnreadableSource[];
+  /**
+   * Evictions this pass read and obeyed (lcm-9m7) — including any that named this agent
+   * itself. Reported for the same reason the roster marks indirect entries: an account
+   * leaving is something the operator has to be able to see a reason for, and "it is not
+   * in the list any more" is not one.
+   */
+  readonly evicted: readonly Eviction[];
 }
 
 /** A pass that reached nothing — what a best-effort discovery falls back to. */
 function emptyDiscovery(): PeerDiscovery {
-  return { added: [], skipped: [], unreadable: [] };
+  return { added: [], skipped: [], unreadable: [], evicted: [] };
 }
 
-/** What a {@link ConnectionManager.revoke} removed: the account, and its dependents. */
-export interface RevokeResult {
-  readonly uuid: string;
+/** What a {@link ConnectionManager.leave} did. */
+export interface LeaveResult {
   /**
-   * Indirect peers that went with it — accounts whose only claim on this agent's keys
-   * was the connection just revoked. Named so the operator sees the full blast radius.
+   * The connections this agent walked away from — every one it had. Named so the
+   * operator sees the full blast radius of a command that takes no argument.
    */
-  readonly orphaned: readonly Connection[];
+  readonly left: readonly Connection[];
+  /**
+   * Whether the households were told, on the same three terms as {@link DeclineResult}:
+   * - `sent` — the departure document is stored; their app can drop this agent.
+   * - `failed` — it is not, so they still hold a member that has in fact gone. This
+   *   agent shares nothing with them either way.
+   * - `skipped` — there was nobody to tell.
+   */
+  readonly notified: 'sent' | 'failed' | 'skipped';
 }
 
 /** One inbound request, with the material the operator needs to judge it. */
@@ -606,6 +878,11 @@ export class NoSuchRequestError extends Error {
  * A request from an account this agent already shares with. Declining it would tell
  * them "no" while the grant document keeps saying yes — the one answer that would be
  * false — so stopping the sharing is a separate, deliberate act.
+ *
+ * The advice it gives is `leave`, because that is the only act of this kind the agent
+ * has left. It removes this agent from every household rather than removing one account
+ * from the roster, and the message says so rather than implying a narrower tool exists
+ * (lcm-9m7). Removing one member is the household's to do, in the app.
  */
 export class ConnectedRequesterError extends Error {
   constructor(
@@ -617,12 +894,14 @@ export class ConnectedRequesterError extends Error {
       `already sharing with ${uuid}, so declining their request would claim something ` +
         `untrue. ` +
         (learnedFrom === null
-          ? `Stop sharing first with \`tolar-mcp revoke ${uuid}\`.`
+          ? `To stop, either remove this agent from the household in the app, or run ` +
+            `\`tolar-mcp leave\` — which walks this agent out of every household it is in.`
           : `This agent shares with them because ${learnedFrom} names them in its grant ` +
-            `document, not because anyone accepted them here — so the way to stop is ` +
-            `\`tolar-mcp revoke ${learnedFrom}\`, which removes everything learned through ` +
-            `that connection. Accepting this request instead is what makes them a ` +
-            `connection in their own right, with the scopes you choose.`),
+            `document, not because anyone accepted them here — so this agent cannot stop ` +
+            `sharing with them alone. Removing them is for a member of the household to ` +
+            `do in the app; \`tolar-mcp leave\` is the other end of it and takes this ` +
+            `agent out of every household. Accepting this request instead is what makes ` +
+            `them a connection in their own right, with the scopes you choose.`),
     );
     this.name = 'ConnectedRequesterError';
   }

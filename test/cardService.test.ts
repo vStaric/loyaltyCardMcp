@@ -65,6 +65,7 @@ function connectionTo(
     scopes,
     kind: 'person',
     connectedAt: 0,
+    admittedAt: 0,
     learnedFrom: null,
   };
 }
@@ -80,7 +81,7 @@ function harness(connections: readonly Connection[] = [], now = () => 1_800_000_
   dirs.push(dir);
   const backend = new FakeBackend();
   const roster = new RosterStore(dir);
-  if (connections.length > 0) roster.save({ connections, handledRequestIds: [] });
+  if (connections.length > 0) roster.save({ connections, handledRequestIds: [], evictions: [] });
   let seq = 0;
   const service = new CardService(agent, backend, crypto, new SyncStateStore(dir), roster, {
     now,
@@ -375,7 +376,7 @@ describe('republish', () => {
   it('re-wraps the same cards to a newly accepted connection', async () => {
     const { backend, service, roster } = harness();
     await service.add({ title: 'Cafe' });
-    roster.save({ connections: [connectionTo(user)], handledRequestIds: [] });
+    roster.save({ connections: [connectionTo(user)], handledRequestIds: [], evictions: [] });
 
     await service.republish();
 
@@ -388,7 +389,7 @@ describe('republish', () => {
   it('rotates a revoked connection out of the recipient set', async () => {
     const { backend, service, roster } = harness([connectionTo(user)]);
     await service.add({ title: 'Cafe' });
-    roster.save({ connections: [], handledRequestIds: [] });
+    roster.save({ connections: [], handledRequestIds: [], evictions: [] });
 
     await service.republish();
 

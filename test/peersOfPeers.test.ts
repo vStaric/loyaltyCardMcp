@@ -12,6 +12,7 @@ import { withIndirectPeers, type Connection, type Roster } from '../src/sharing/
 import { SyncStateStore } from '../src/sync/syncState.js';
 import type { ShareRequestViewDto } from '../src/sync/wire.js';
 import {
+  evictionBy,
   FakeBackend,
   identityOf,
   publishShareDocAs,
@@ -278,7 +279,16 @@ describe('what a peer is not allowed to do', () => {
     const merged = withIndirectPeers(
       emptyRoster(),
       directConnection(vid, ['cards']),
-      [{ uuid: ana.uuid, displayName: 'Ana', signKey: short, encKey: short, kind: 'person' }],
+      [
+        {
+          uuid: ana.uuid,
+          displayName: 'Ana',
+          signKey: short,
+          encKey: short,
+          kind: 'person',
+          admittedAt: 0,
+        },
+      ],
       agent.uuid,
       1,
     );
@@ -401,25 +411,46 @@ describe('a forged envelope from an indirect peer', () => {
   });
 });
 
-describe('revoking the connection an indirect peer arrived through', () => {
+/**
+ * The cascade — an indirect peer's claim on this agent's keys is the connection that
+ * vouched for it, and nothing else.
+ *
+ * These used to be reached through `revoke`, which is gone (lcm-9m7): this agent has no
+ * verb that removes another account. The two ways a connection can now leave are the
+ * household evicting it and this agent walking out, and both have to take the subtree
+ * with them for the same reason revoke did.
+ */
+describe('losing the connection an indirect peer arrived through', () => {
   it('takes the indirect peer with it rather than leaving an orphan', async () => {
     const h = harness();
-    vidVouchesFor(h, [shareDocEntry(ana, 'Ana')]);
-    await connectVid(h);
-    expect(h.manager.connections()).toHaveLength(2);
+    h.backend.requests = [requestFrom(vid, 1), requestFrom(mo, 2)];
+    await h.manager.accept(1);
+    await h.manager.accept(2);
+    vidVouchesFor(h, [shareDocEntry(ana, 'Ana')], 2);
+    await h.manager.syncPeers();
+    expect(h.manager.connections()).toHaveLength(3);
 
-    const revoked = await h.manager.revoke(vid.uuid);
-    expect(revoked!.orphaned.map((c) => c.uuid)).toEqual([ana.uuid]);
-    expect(h.manager.connections()).toEqual([]);
+    // Mo declares Vid out of the household. Ana was only ever in this roster because
+    // Vid vouched for her.
+    publishShareDocAs(h.backend, crypto, mo, [], [mo, agent], 2, [evictionBy(mo, vid)]);
+    await h.manager.syncPeers();
+
+    expect(h.manager.connections().map((c) => c.uuid)).toEqual([mo.uuid]);
   });
 
   it('stops sealing to the orphan on the very next publish', async () => {
     const h = harness();
-    vidVouchesFor(h, [shareDocEntry(ana, 'Ana')]);
-    await connectVid(h);
+    h.backend.requests = [requestFrom(vid, 1), requestFrom(mo, 2)];
+    await h.manager.accept(1);
+    await h.manager.accept(2);
+    vidVouchesFor(h, [shareDocEntry(ana, 'Ana')], 2);
+    await h.manager.syncPeers();
     await h.cards.add({ title: 'Bakery' });
+    expect(h.backend.cards.get(agent.uuid)!.envelope.keys[ana.uuid]).toBeDefined();
 
-    await h.manager.revoke(vid.uuid);
+    publishShareDocAs(h.backend, crypto, mo, [], [mo, agent], 2, [evictionBy(mo, vid)]);
+    await h.manager.syncPeers();
+
     expect(h.backend.cards.get(agent.uuid)!.envelope.keys[ana.uuid]).toBeUndefined();
   });
 
@@ -432,14 +463,31 @@ describe('revoking the connection an indirect peer arrived through', () => {
     publishShareDocAs(h.backend, crypto, mo, [shareDocEntry(ana, 'Ana')], [mo, agent]);
     await h.manager.syncPeers();
 
-    // Attributed to whichever vouched first; revoking that one drops her, and the next
-    // pass re-adds her through the connection that still names her.
+    // Attributed to whichever vouched first. Evicting *that* one drops her with it, and
+    // the same pass re-derives her through the connection that still names her — which
+    // is the right answer: she was never only that one's peer, and the eviction was not
+    // about her.
     const via = h.manager.connections().find((c) => c.uuid === ana.uuid)!.learnedFrom!;
-    await h.manager.revoke(via);
-    expect(h.manager.connections().map((c) => c.uuid)).not.toContain(ana.uuid);
-
+    const stays = via === vid.uuid ? mo : vid;
+    publishShareDocAs(h.backend, crypto, stays, [shareDocEntry(ana, 'Ana')], [stays, agent], 3, [
+      { uuid: via, atMillis: 1_800_000_000_001, by: stays.uuid },
+    ]);
     await h.manager.syncPeers();
-    expect(h.manager.connections().find((c) => c.uuid === ana.uuid)!.learnedFrom).not.toBe(via);
+
+    expect(h.manager.connections().map((c) => c.uuid)).not.toContain(via);
+    expect(h.manager.connections().find((c) => c.uuid === ana.uuid)!.learnedFrom).toBe(stays.uuid);
+  });
+
+  it('takes everything with it when the agent walks out', async () => {
+    const h = harness();
+    vidVouchesFor(h, [shareDocEntry(ana, 'Ana')]);
+    await connectVid(h);
+    expect(h.manager.connections()).toHaveLength(2);
+
+    const result = await h.manager.leave();
+
+    expect(result.left.map((c) => c.uuid).sort()).toEqual([vid.uuid, ana.uuid].sort());
+    expect(h.manager.connections()).toEqual([]);
   });
 
   it('drops an orphan the roster file somehow already holds', () => {
@@ -449,6 +497,7 @@ describe('revoking the connection an indirect peer arrived through', () => {
     new RosterStore(dir).save({
       connections: [directConnection(vid, ['cards']), orphan],
       handledRequestIds: [],
+      evictions: [],
     });
     expect(new RosterStore(dir).load().connections.map((c) => c.uuid)).toEqual([vid.uuid]);
   });
@@ -464,21 +513,21 @@ describe('decodeShareDoc', () => {
         ],
       }),
     );
-    expect(peers).toEqual([
-      { uuid: 'u', displayName: 'Ana', signKey: 'a', encKey: 'b', kind: 'person' },
-      { uuid: 'v', displayName: null, signKey: 'c', encKey: 'd', kind: 'agent' },
+    expect(peers.peers).toEqual([
+      { uuid: 'u', displayName: 'Ana', signKey: 'a', encKey: 'b', kind: 'person', admittedAt: 0 },
+      { uuid: 'v', displayName: null, signKey: 'c', encKey: 'd', kind: 'agent', admittedAt: 0 },
     ]);
   });
 
   it('keeps an entry whose keys are missing, so it can be refused by name', () => {
     const peers = decodeShareDoc(JSON.stringify({ connections: [{ uuid: 'u' }] }));
-    expect(peers).toEqual([
-      { uuid: 'u', displayName: null, signKey: '', encKey: '', kind: 'person' },
+    expect(peers.peers).toEqual([
+      { uuid: 'u', displayName: null, signKey: '', encKey: '', kind: 'person', admittedAt: 0 },
     ]);
   });
 
   it('drops an entry with no uuid, which there is no way to report', () => {
-    expect(decodeShareDoc(JSON.stringify({ connections: [{ signKey: 'a' }] }))).toEqual([]);
+    expect(decodeShareDoc(JSON.stringify({ connections: [{ signKey: 'a' }] })).peers).toEqual([]);
   });
 
   it('throws for a document that is not a connections array', () => {
@@ -488,7 +537,7 @@ describe('decodeShareDoc', () => {
 });
 
 function emptyRoster(): Roster {
-  return { connections: [], handledRequestIds: [] };
+  return { connections: [], handledRequestIds: [], evictions: [] };
 }
 
 function directConnection(identity: Identity, scopes: Connection['scopes']): Connection {
@@ -500,6 +549,7 @@ function directConnection(identity: Identity, scopes: Connection['scopes']): Con
     scopes,
     kind: 'person',
     connectedAt: 1_800_000_000_000,
+    admittedAt: 1_800_000_000_000,
     learnedFrom: null,
   };
 }

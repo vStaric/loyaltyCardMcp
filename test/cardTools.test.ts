@@ -55,6 +55,7 @@ const connection = (): Connection => ({
   scopes: ['cards'],
   kind: 'person',
   connectedAt: 0,
+  admittedAt: 0,
   learnedFrom: null,
 });
 
@@ -63,7 +64,7 @@ function harness(connections: readonly Connection[] = [connection()]) {
   dirs.push(dir);
   const backend = new FakeBackend();
   const roster = new RosterStore(dir);
-  if (connections.length > 0) roster.save({ connections, handledRequestIds: [] });
+  if (connections.length > 0) roster.save({ connections, handledRequestIds: [], evictions: [] });
   const service = new CardService(agent, backend, crypto, new SyncStateStore(dir), roster, {
     now: () => 1_800_000_000_000,
     newId: () => 'agent-card',
